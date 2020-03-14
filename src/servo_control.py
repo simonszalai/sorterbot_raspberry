@@ -1,8 +1,10 @@
 import os
+import re
 import pigpio
 import time
 import math
 from pathlib import Path
+from datetime import datetime
 from video import Camera
 
 """
@@ -16,41 +18,40 @@ class ServoControl:
     def __init__(self):
         self.pi = pigpio.pi()
         self.camera = Camera()
-
+        self.servos = (16, 20, 21)
         self.current_set_path = self.create_next_folder()
-
-        self.servo0PIN = 36  # GPIO16
-        self.servo1PIN = 38  # GPIO20
-        self.servo2PIN = 40  # GPIO21
-
         self.start_positions = {
-            16: 1450,
-            20: 500,
-            21: 1800
+            self.servos[0]: 1425,
+            self.servos[1]: 500,
+            self.servos[2]: 1800
         }
-
         self.speeds = {
             "slow": 25,
             "fast": 500
         }
 
-    def init_recording(self):
-        trajectory_1 = self.generate_trajectory(start=self.start_positions[16], end=2200, speed=self.speeds["fast"])
-        trajectory_2 = self.generate_trajectory(start=self.start_positions[20], end=1200, speed=self.speeds["fast"])
-        trajectory_3 = self.generate_trajectory(start=self.start_positions[21], end=1810, speed=self.speeds["fast"])
+    def execute_commands(self, commands):
+        for cmd in commands:
+            servo, end_position = cmd[0], cmd[1]
+            try:
+                speed = self.speeds[cmd[2]]
+            except IndexError:
+                speed = self.speeds["fast"]
+            self.move_arm(servo=servo, start=self.start_positions[servo], end=end_position, speed=speed)
 
-        self.execute_trajectory(16, trajectory_1)
-        self.execute_trajectory(21, trajectory_3)
-        self.execute_trajectory(20, trajectory_2)
+    def init_arm_for_recording(self):
+        self.execute_commands(((self.servos[0], 2200), (self.servos[2], 1810), (self.servos[1], 1200)))
+
+    def reset_arm(self):
+        self.execute_commands(((self.servos[0], 1425), (self.servos[1], 500)))
 
     def do_recording(self):
-        trajectory_1 = self.generate_trajectory(start=self.start_positions[16], end=800, speed=self.speeds["slow"])
-        self.camera.start()
-        self.execute_trajectory(16, trajectory_1)
+        self.camera.start(path=os.path.join(self.current_set_path, datetime.now().strftime("%d.%m.%Y_%H:%M:%S") + ".h264"))
+        self.execute_commands([(self.servos[0], 800, "slow")])
         self.camera.stop()
-        self.init_recording()
+        self.init_arm_for_recording()
 
-    def generate_trajectory(self, start, end, speed=1, freq=50, dataset_recording=False):
+    def move_arm(self, servo, start, end, speed=1, freq=50, dataset_recording=False):
         delta_angle = end - start
         duration = abs(delta_angle) / speed
         steps = abs(freq * duration)
@@ -67,9 +68,6 @@ class ServoControl:
             sine_value = start + sine_delta
             trajectory.append(linear_value if dataset_recording else sine_value)
 
-        return trajectory
-
-    def execute_trajectory(self, servo, trajectory, freq=50):
         for step in trajectory:
             t0 = time.time()
             self.pi.set_servo_pulsewidth(servo, step)
@@ -84,11 +82,19 @@ class ServoControl:
         recordings_path = os.path.join(Path().parent.absolute(), "recordings")
 
         # List contents of recordings folder or create it if it does not exist
+        folder_names = []
         try:
             folder_names = [f.name for f in os.scandir(recordings_path) if f.is_dir()]
         except FileNotFoundError:
             os.mkdir(recordings_path)
             next_folder = os.path.join(recordings_path, "1")
+
+        # Sort folder names
+        def sorted_alphanumeric(data):
+            convert = lambda text: int(text) if text.isdigit() else text.lower()
+            alphanum_key = lambda key: [convert(c) for c in re.split('([0-9]+)', key)]
+            return sorted(data, key=alphanum_key)
+        folder_names = sorted_alphanumeric(folder_names)
 
         # Check if there are any folders in recordings and initialize a folder with number 1 if not
         try:
@@ -102,13 +108,14 @@ class ServoControl:
             next_folder = os.path.join(recordings_path, str(int(folder_names[-1]) + 1))
             os.mkdir(next_folder)
 
-        print(next_folder)
         return next_folder
 
     def close(self):
-        self.pi.set_servo_pulsewidth(16, 0)
-        self.pi.set_servo_pulsewidth(20, 0)
-        self.pi.set_servo_pulsewidth(21, 0)
+        if self.camera.camera.recording:
+            self.camera.stop()
+        self.reset_arm()
+        for servo in self.servos:
+            self.pi.set_servo_pulsewidth(servo, 0)
 
 
 control = ServoControl()
@@ -120,10 +127,11 @@ while True:
             control.close()
             break
         elif cmd == 1:
-            control.init_recording()
+            control.init_arm_for_recording()
         elif cmd == 2:
             control.do_recording()
-    except Exception:
+    except Exception as e:
         control.close()
+        raise e
 
     time.sleep(0.5)
