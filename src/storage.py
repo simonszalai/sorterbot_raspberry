@@ -19,12 +19,12 @@ class Storage:
     def create_next_folder(self):
         recordings_path = os.path.join(Path().parent.absolute(), "recordings")
 
-        # List contents of recordings folder or create it in case it does not exist
+        # List subfolders in recordings folder or create it in case it does not exist
         try:
             folder_names = [f.name for f in os.scandir(recordings_path) if f.is_dir()]
         except FileNotFoundError:
             folder_names = []
-            os.mkdir(recordings_path)
+            os.makedirs(recordings_path)
             next_folder = os.path.join(recordings_path, "1")
 
         # Nauturally sort folder names
@@ -39,11 +39,11 @@ class Storage:
             next_folder = os.path.join(recordings_path, folder_names[-1])
         except IndexError:
             next_folder = os.path.join(recordings_path, "1")
-            os.mkdir(next_folder)
+            os.makedirs(next_folder)
 
         # Check if last folder contains any items and create new folder if it does
         if len(os.listdir(next_folder)) != 0:
             next_folder = os.path.join(recordings_path, str(int(folder_names[-1]) + 1))
-            os.mkdir(next_folder)
+            os.makedirs(next_folder)
 
         return next_folder

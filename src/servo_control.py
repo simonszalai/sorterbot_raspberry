@@ -27,8 +27,8 @@ class ServoControl:
             self.servos[2]: 1800
         }
         self.speeds = {
-            "dataset": 50,
-            "fast": 500
+            "dataset": 25,
+            "fast": 700
         }
 
     def execute_commands_series(self, commands):
@@ -36,15 +36,13 @@ class ServoControl:
             self.move_arm(cmd=cmd)
 
     def execute_commands_parallel(self, commands):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=len(commands)) as executor:
-            for cmd in commands:
-                executor.submit(self.move_arm, cmd=cmd)
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(commands))
+        for cmd in commands:
+            executor.submit(self.move_arm, cmd=cmd)
 
     def init_arm_for_recording(self):
-        print("Moving arm to initial position...")
         self.execute_commands_series(((self.servos[2], 1810),))
         self.execute_commands_parallel(((self.servos[0], 2200), (self.servos[1], 1200)))
-        print("Arm in initial position!")
 
     def reset_arm(self):
         self.execute_commands_parallel(((self.servos[0], 1425), (self.servos[1], 500)))
@@ -54,15 +52,14 @@ class ServoControl:
         self.camera.start(path=video_path)
         self.execute_commands_series([(self.servos[0], 800, "dataset")])
         self.camera.stop()
-        with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-            executor.submit(self.storage.upload, video_path)
-            executor.submit(self.init_arm_for_recording)
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+        executor.submit(self.storage.upload, video_path)
+        executor.submit(self.init_arm_for_recording)
 
     def move_arm(self, cmd):
         servo, end = cmd[0], cmd[1]
         start = self.start_positions[servo]
         dataset_recording = False
-        freq = 50
 
         try:
             speed = self.speeds[cmd[2]]
@@ -71,9 +68,13 @@ class ServoControl:
         except IndexError:
             speed = self.speeds["fast"]
 
+        steps_per_sec = 2 if dataset_recording else 50
+        sleep_length = 1 / 1.5 if dataset_recording else 1 / 50
+
         delta_angle = end - start
-        duration = abs(delta_angle) / speed
-        steps = abs(freq * duration)
+        duration = delta_angle / speed
+        steps = abs(steps_per_sec * duration)
+
         try:
             delta_angle_per_step = delta_angle / steps
         except ZeroDivisionError:
@@ -88,10 +89,7 @@ class ServoControl:
             trajectory.append(linear_value if dataset_recording else sine_value)
 
         for step in trajectory:
-            t0 = time.time()
             self.pi.set_servo_pulsewidth(servo, step)
-            t1 = time.time()
-            sleep_length = (1 / freq) - (t1 - t0)
             if sleep_length > 0:
                 time.sleep(sleep_length)
 
