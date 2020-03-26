@@ -1,6 +1,7 @@
 import os
 import re
 import boto3
+from datetime import datetime
 from pathlib import Path
 
 
@@ -8,16 +9,23 @@ class Storage:
     def __init__(self):
         self.s3 = boto3.resource("s3")
 
-    def upload(self, path):
+    def upload_file(self, bucket, path):
         print(f"Uploading {path}...\n")
         filename = os.path.basename(path)
         dir_tree = os.path.dirname(path)
         parent_folder = os.path.basename(dir_tree)
-        self.s3.Bucket("sorterbot-training-videos").upload_file(path, os.path.join(parent_folder, filename))
+        self.s3.Bucket(bucket).upload_file(path, os.path.join(parent_folder, filename))
         print("Upload completed!")
 
-    def create_next_folder(self):
-        recordings_path = os.path.join(Path().parent.absolute(), "recordings")
+    def create_next_session_folder(self):
+        sessions_path = os.path.join(Path(__file__).resolve().parent.parent, "sessions")
+        curr_sess_path = os.path.join(sessions_path, f"sess_{datetime.now().strftime('%d_%m_%Y__%H_%M_%S')}")
+        os.makedirs(curr_sess_path, exist_ok=True)
+
+        return curr_sess_path
+
+    def create_next_train_folder(self):
+        recordings_path = os.path.join(Path(__file__).resolve().parent.parent, "recordings")
 
         # List subfolders in recordings folder or create it in case it does not exist
         try:

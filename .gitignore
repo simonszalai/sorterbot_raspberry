@@ -1,4 +1,5 @@
 .vscode
 recordings
+sessions
 *.h264
 *.pyc
