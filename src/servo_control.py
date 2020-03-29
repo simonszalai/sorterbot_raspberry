@@ -12,6 +12,7 @@ from time import sleep
 GPIO 16: SERVO0, (L)2400-(R)550 // 550 = -90deg, 1450 = 0deg, 2350 = +90deg
 GPIO 20: SERVO1, 900-2150
 GPIO 21: SERVO2, 1800-1000
+GPIO 26: SERVO3, 
 """
 
 
@@ -20,25 +21,26 @@ class ServoControl:
         self.pi = pigpio.pi()
         self.camera = Camera()
         self.storage = Storage()
-        self.servos = (16, 20, 21)
+        self.servos = (16, 20, 21, 26)
         self.current_set_path = self.storage.create_next_train_folder()
         self.start_positions = {
             self.servos[0]: 1425,
             self.servos[1]: 500,
-            self.servos[2]: 1800
+            self.servos[2]: 1800,
+            self.servos[3]: 1780
         }
         self.speeds = {
-            "dataset": 25,
+            "dataset": 20,
             "fast": 700
         }
 
-    def init_arm_position(self, is_inference):
+    def init_arm_position(self, is_inference=False):
         axis_0_init_pos = 2200
         if is_inference:
             axis_0_init_pos = 2000
 
         self.execute_commands_series([(self.servos[2], 1810)])
-        self.execute_commands_parallel(((self.servos[0], axis_0_init_pos), (self.servos[1], 1200)))
+        self.execute_commands_parallel(((self.servos[0], axis_0_init_pos), (self.servos[1], 1200), (self.servos[3], 1780)))
 
     def reset_arm(self):
         self.execute_commands_parallel(((self.servos[0], 1425), (self.servos[1], 500)))
@@ -65,7 +67,6 @@ class ServoControl:
         # Generate positions where pictures will be takes
         steps = reversed(range(1000, 2200, 200))
         for step in steps:
-            print(step)
             # Construct image path
             image_path = os.path.join(curr_sess_path, f"{step}.jpg")
 
@@ -92,11 +93,16 @@ class ServoControl:
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(commands))
         for cmd in commands:
             executor.submit(self.move_arm, cmd=cmd)
+        executor.shutdown(wait=True)  # Wait for every thread to complete
 
     def move_arm(self, cmd):
         servo, end = cmd[0], cmd[1]
         start = self.start_positions[servo]
         dataset_recording = False
+
+        # Fix servo in starting position in case start and end are the same
+        if start == end:
+            self.pi.set_servo_pulsewidth(servo, start)
 
         try:
             speed = self.speeds[cmd[2]]
@@ -105,12 +111,12 @@ class ServoControl:
         except IndexError:
             speed = self.speeds["fast"]
 
-        steps_per_sec = 2 if dataset_recording else 50
+        rotation_units_per_sec = 2 if dataset_recording else 50
         sleep_length = 1 / 1.5 if dataset_recording else 1 / 50
 
         delta_angle = end - start
         duration = delta_angle / speed
-        steps = abs(steps_per_sec * duration)
+        steps = abs(rotation_units_per_sec * duration)
 
         try:
             delta_angle_per_step = delta_angle / steps
@@ -154,6 +160,13 @@ while True:
             control.do_recording()
         elif cmd == 3:
             control.take_pictures()
+        elif cmd == 4:
+            control.move_arm((control.servos[3], 1780))
+        elif cmd == 5:
+            while True:
+                servo = input("Servo: ")
+                angle = input("Angle: ")
+                control.move_arm((control.servos[int(servo)], int(angle)))
     except Exception as e:
         control.close()
         raise e
