@@ -1,3 +1,8 @@
+"""
+This module handles uploads to AWS s3 and creation of local folder for files to be saved.
+
+"""
+
 import os
 import re
 import boto3
@@ -7,9 +12,24 @@ from pathlib import Path
 
 class Storage:
     def __init__(self):
+        """
+        This class includes methods for upload to s3 and creation of folders.
+        """
         self.s3 = boto3.resource("s3")
 
     def upload_file(self, bucket, path):
+        """
+        This method uploads a file to s3.
+
+        Parameters
+        ----------
+        bucket : str
+            Bucket name on AWS s3.
+        path : str
+            Path of the file to be uploaded.
+
+        """
+
         print(f"Uploading {path}...\n")
         filename = os.path.basename(path)
         dir_tree = os.path.dirname(path)
@@ -18,6 +38,16 @@ class Storage:
         print("Upload completed!")
 
     def create_next_session_folder(self):
+        """
+        This method creates a folder for the inference images names sess_{datetime}.
+
+        Returns
+        -------
+        curr_sess_path : str
+            Absolute path of the current session folder.
+
+        """
+
         sessions_path = os.path.join(Path(__file__).resolve().parent.parent, "sessions")
         curr_sess_path = os.path.join(sessions_path, f"sess_{datetime.now().strftime('%d_%m_%Y__%H_%M_%S')}")
         os.makedirs(curr_sess_path, exist_ok=True)
@@ -25,6 +55,18 @@ class Storage:
         return curr_sess_path
 
     def create_next_train_folder(self):
+        """
+        This method created a folder for the training videos, named as simple integers starting from 1.
+        It will find the highest existing number and increment it to get the current folder name.
+        If the highest number is an empty folder, that will be used instead of creating a new one.
+
+        Returns
+        -------
+        next_folder : str
+            Absolute path of the next folder for training videos.
+
+        """
+
         recordings_path = os.path.join(Path(__file__).resolve().parent.parent, "recordings")
 
         # List subfolders in recordings folder or create it in case it does not exist
