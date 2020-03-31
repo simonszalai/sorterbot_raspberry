@@ -1,5 +1,3 @@
-import os
-import boto3
 from picamera import PiCamera
 from time import sleep
 
@@ -8,7 +6,7 @@ class Camera:
     def __init__(self):
         self.camera = PiCamera()
         self.camera.resolution = (1640, 1232)
-        self.camera.framerate = 40
+        self.camera.framerate = 30
 
     def start(self, path):
         self.camera.start_recording(path)

@@ -1,11 +1,7 @@
-import os
 import time
 import math
 import pigpio
 import concurrent.futures
-from datetime import datetime
-from camera import Camera
-from storage import Storage
 from time import sleep
 
 """
@@ -19,16 +15,9 @@ GPIO 26: SERVO3,
 class ServoControl:
     def __init__(self):
         self.pi = pigpio.pi()
-        self.camera = Camera()
-        self.storage = Storage()
-        self.servos = (16, 20, 21, 26)
-        self.current_set_path = self.storage.create_next_train_folder()
-        self.start_positions = {
-            self.servos[0]: 1425,
-            self.servos[1]: 500,
-            self.servos[2]: 1800,
-            self.servos[3]: 1780
-        }
+        self.servos = (14, 15, 18, 24)
+        self.start_positions = (1425, 500, 1800, 1780,)
+        self.curr_positions = [1425, 500, 1800, 1780]
         self.speeds = {
             "dataset": 20,
             "fast": 700
@@ -39,65 +28,50 @@ class ServoControl:
         if is_inference:
             axis_0_init_pos = 2000
 
-        self.execute_commands_series([(self.servos[2], 1810)])
-        self.execute_commands_parallel(((self.servos[0], axis_0_init_pos), (self.servos[1], 1200), (self.servos[3], 1780)))
+        self.execute_commands([(2, 1810)])
+        self.execute_commands(((0, axis_0_init_pos), (1, 1200), (3, 1780)), parallel=True)
 
-    def reset_arm(self):
-        self.execute_commands_parallel(((self.servos[0], 1425), (self.servos[1], 500)))
+    def execute_commands(self, commands, parallel=False):
+        if parallel:
+            executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(commands))
+            for cmd in commands:
+                executor.submit(self.execute_command, cmd=cmd)
+            executor.shutdown(wait=True)  # Wait for every thread to complete
+        else:
+            for cmd in commands:
+                self.execute_command(cmd=cmd)
 
-    def do_recording(self):
-        video_path = os.path.join(self.current_set_path, datetime.now().strftime("%d.%m.%Y_%H:%M:%S") + ".h264")
-        self.camera.start(path=video_path)
-        self.execute_commands_series([(self.servos[0], 800, "dataset")])
-        self.camera.stop()
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=2)
-        executor.submit(self.storage.upload_file, "sorterbot-training-videos", video_path)
-        executor.submit(self.init_arm_position)
+    def move_to_position(self, end_pos, is_container=False):
+        height_offset = 200 if is_container else 0
+        servo_1_pos = ((end_pos[1] * -1 + 1232) / 1232 * 700) + 1100
+        servo_2_pos = 8.99e-4 * servo_1_pos ** 2 - 2.46 * servo_1_pos + 2877 + height_offset
+        servo_3_pos = 1.59e-6 * servo_1_pos ** 3 - 8.18e-3 * servo_1_pos ** 2 + 13.5 * servo_1_pos - 5847
 
-    def take_pictures(self):
-        # Construct session path
-        curr_sess_path = self.storage.create_next_session_folder()
+        # To fix servos 2 and 3. It only does meaninful things at the first movement after
+        # starting sequence, after that just fixes them on current movement.
+        self.execute_commands((
+            (2, self.curr_positions[2]),
+            (3, self.curr_positions[3])
+        ), parallel=True)
 
-        # Init arm position for inference
-        self.init_arm_position(is_inference=True)
+        self.execute_commands((
+            (2, self.start_positions[2]),
+        ))
 
-        # Upload files on separate threads so the arm's movement is not blocked until upload is complete
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
+        self.execute_commands((
+            (1, servo_1_pos),
+            (0, end_pos[0]),
+        ), parallel=True)
 
-        # Generate positions where pictures will be takes
-        steps = reversed(range(1000, 2200, 200))
-        for step in steps:
-            # Construct image path
-            image_path = os.path.join(curr_sess_path, f"{step}.jpg")
+        self.execute_commands((
+            (2, servo_2_pos),
+            (3, servo_3_pos)
+        ), parallel=True)
 
-            # Move arm to next position
-            self.execute_commands_series([(self.servos[0], step)])
-
-            # Wait a bit for stabilization
-            sleep(0.5)
-
-            # Take the picture
-            self.camera.take_picture(image_path)
-
-            # Upload it to S3
-            executor.submit(self.storage.upload_file, "sorterbot", image_path)
-
-        # Move arm to initial position
-        self.reset_arm()
-
-    def execute_commands_series(self, commands):
-        for cmd in commands:
-            self.move_arm(cmd=cmd)
-
-    def execute_commands_parallel(self, commands):
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=len(commands))
-        for cmd in commands:
-            executor.submit(self.move_arm, cmd=cmd)
-        executor.shutdown(wait=True)  # Wait for every thread to complete
-
-    def move_arm(self, cmd):
-        servo, end = cmd[0], cmd[1]
-        start = self.start_positions[servo]
+    def execute_command(self, cmd):
+        servo_idx, end = cmd[0], cmd[1]
+        servo = self.servos[servo_idx]
+        start = self.curr_positions[servo_idx]
         dataset_recording = False
 
         # Fix servo in starting position in case start and end are the same
@@ -134,41 +108,10 @@ class ServoControl:
         for step in trajectory:
             self.pi.set_servo_pulsewidth(servo, step)
             if sleep_length > 0:
-                time.sleep(sleep_length)
+                sleep(sleep_length)
 
-        self.start_positions[servo] = trajectory[-1]
+        self.curr_positions[servo_idx] = trajectory[-1]
 
-    def close(self):
-        if self.camera.camera.recording:
-            self.camera.stop()
-        self.reset_arm()
+    def neutralize_servos(self):
         for servo in self.servos:
             self.pi.set_servo_pulsewidth(servo, 0)
-
-
-control = ServoControl()
-
-while True:
-    try:
-        cmd = int(input("Command: "))
-        if cmd == 0:
-            control.close()
-            break
-        elif cmd == 1:
-            control.init_arm_position()
-        elif cmd == 2:
-            control.do_recording()
-        elif cmd == 3:
-            control.take_pictures()
-        elif cmd == 4:
-            control.move_arm((control.servos[3], 1780))
-        elif cmd == 5:
-            while True:
-                servo = input("Servo: ")
-                angle = input("Angle: ")
-                control.move_arm((control.servos[int(servo)], int(angle)))
-    except Exception as e:
-        control.close()
-        raise e
-
-    time.sleep(0.5)
