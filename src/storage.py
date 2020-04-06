@@ -1,5 +1,5 @@
 """
-This module handles uploads to AWS s3 and creation of local folder for files to be saved.
+Handles uploads to AWS s3 and creation of local folder for files to be saved.
 
 """
 
@@ -13,13 +13,13 @@ from pathlib import Path
 class Storage:
     def __init__(self):
         """
-        This class includes methods for upload to s3 and creation of folders.
+        Includes methods for upload to s3 and creation of folders.
         """
         self.s3 = boto3.resource("s3")
 
     def upload_file(self, bucket, path):
         """
-        This method uploads a file to s3.
+        Uploads a file to s3.
 
         Parameters
         ----------
@@ -30,16 +30,16 @@ class Storage:
 
         """
 
-        print(f"Uploading {path}...\n")
         filename = os.path.basename(path)
+        print(f"Uploading {filename}...")
         dir_tree = os.path.dirname(path)
         parent_folder = os.path.basename(dir_tree)
         self.s3.Bucket(bucket).upload_file(path, os.path.join(parent_folder, filename))
-        print("Upload completed!")
+        print(f"Upload of {filename} completed!")
 
     def create_next_session_folder(self):
         """
-        This method creates a folder for the inference images names sess_{datetime}.
+        Creates a folder for the inference images names sess_{datetime}.
 
         Returns
         -------
@@ -56,7 +56,7 @@ class Storage:
 
     def create_next_train_folder(self):
         """
-        This method created a folder for the training videos, named as simple integers starting from 1.
+        Creates a folder for the training videos, named as simple integers starting from 1.
         It will find the highest existing number and increment it to get the current folder name.
         If the highest number is an empty folder, that will be used instead of creating a new one.
 

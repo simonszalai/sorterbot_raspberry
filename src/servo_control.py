@@ -1,5 +1,5 @@
 """
-This module contains the lower level insturctions that are manipulating the servos directly. These functions are called from
+Contains the lower level insturctions that are manipulating the servos directly. These functions are called from
 the high level counterpart, arm_control.
 
 """
@@ -11,9 +11,9 @@ from time import sleep
 
 
 class ServoControl:
-    def __init__(self, servos=(14, 15, 18, 24), start_positions=(1425, 500, 1800, 1780)):
+    def __init__(self, servos=(14, 15, 18, 24, 25), start_positions=(1425, 500, 1800, 1780, 1150)):
         """
-        This class contains the low level instructions to manipulate the servos using PWM (pulse width modulation). PiGPIO library is used instead of the
+        Contains the low level instructions to manipulate the servos using PWM (pulse width modulation). PiGPIO library is used instead of the
         default RPi.GPIO, because PiGPIO uses hardware timing which results in much more accurate pulse widths. Using software timing might delay and alter
         the pulses in case the CPU of the Raspberry Pi is doing some other work in the same time (like uploading a video, etc.).
         There are different speeds specified in the __init__ function. The units of these are pulse width change per second. A much slower speed is needed
@@ -47,7 +47,7 @@ class ServoControl:
 
     def init_arm_position(self, is_inference=False):
         """
-        This function instructs the arm to move to inital position for taking a video for training or for taking pictures for inference.
+        Instructs the arm to move to inital position for taking a video for training or for taking pictures for inference.
 
         """
 
@@ -56,11 +56,16 @@ class ServoControl:
             axis_0_init_pos = 2000
 
         self.execute_commands(((2, 1810),))
-        self.execute_commands(((0, axis_0_init_pos), (1, 1200), (3, 1780)), parallel=True)
+        self.execute_commands((
+            (0, axis_0_init_pos),
+            (1, 1200),
+            (3, self.start_positions[3]),
+            (4, self.start_positions[4])
+        ), parallel=True)
 
     def execute_commands(self, commands, parallel=False):
         """
-        This function executes the commands supplied.
+        Executes the commands supplied.
 
         Parameters
         ----------
@@ -86,7 +91,7 @@ class ServoControl:
 
     def move_to_position(self, end_pos, is_container=False):
         """
-        This function instructs the arm to move to the supplied destination. On the first run, it fixes servo2 and servo3 to avoid unexpected
+        Instructs the arm to move to the supplied destination. On the first run, it fixes servo2 and servo3 to avoid unexpected
         movements. It always start with moving servo2 to position in order to avoid bouncing into objects. The variables servo_2_pos and servo_3_pos
         are functions of servo_1_pos and were determined by recording 7 datapoints of the servo angles for correct position for item pickup, then
         polynomial curves were fitted, which gave the constants used below.
@@ -102,9 +107,10 @@ class ServoControl:
         """
 
         height_offset = 200 if is_container else 0
-        servo_1_pos = ((end_pos[1] * -1 + 1232) / 1232 * 700) + 1100  # Convert distance in pixels from top to pulse width for servo1
-        servo_2_pos = 8.99e-4 * servo_1_pos ** 2 - 2.46 * servo_1_pos + 2877 + height_offset
-        servo_3_pos = 1.59e-6 * servo_1_pos ** 3 - 8.18e-3 * servo_1_pos ** 2 + 13.5 * servo_1_pos - 5847
+
+        servo_1_pos = end_pos[1]
+        servo_2_pos = -7.83e-7 * servo_1_pos ** 3 + 5.26e-3 * servo_1_pos ** 2 - 10.3 * servo_1_pos + 7341 + height_offset
+        servo_3_pos = 1.48e-6 * servo_1_pos ** 3 - 8.11e-3 * servo_1_pos ** 2 + 14.2 * servo_1_pos - 6634
 
         # To fix servos 2 and 3. It only does meaninful things at the first movement after
         # starting sequence, after that just fixes them on current movement.
@@ -129,7 +135,7 @@ class ServoControl:
 
     def execute_command(self, cmd):
         """
-        This function executes a single command on a single servo. Since servos move as fast as they can to the given position,
+        Executes a single command on a single servo. Since servos move as fast as they can to the given position,
         which results in a too fast and unstable movement, instead of immediatly giving the command to move to the final positions,
         a series of intermediate positions are generated and supplied to the servo in a certain frequency to slow and smooth the movement.
         Except when recording the dataset (where even periods between movements are important) a sine smoothing is applied to further
@@ -202,7 +208,7 @@ class ServoControl:
 
     def neutralize_servos(self):
         """
-        This function neutralizes servos, which means that it sends a 0 pulse width to each of them, which will make them release the shafts,
+        Neutralizes servos, which means that it sends a 0 pulse width to each of them, which will make them release the shafts,
         so they become moveable with hand.
 
         """
