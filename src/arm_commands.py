@@ -1,14 +1,16 @@
 """
-This module containes the higher level commands that control the robotic arm. These commands are not directly controlling
+Contains the higher level commands that control the robotic arm. These commands are not directly controlling
 the servo motors, they are doing higher level operations which consists of series of lower level steps.
 
 """
 
 
 import os
+import requests
 import concurrent.futures
 from time import sleep
 from datetime import datetime
+from urllib.parse import urljoin
 
 from camera import Camera
 from storage import Storage
@@ -19,7 +21,7 @@ from servo_control import ServoControl
 class ArmCommands:
     def __init__(self):
         """
-        This class contains all the higher level commands used to control the robotic arm.
+        Contains all the higher level commands used to control the robotic arm.
 
         """
 
@@ -29,10 +31,11 @@ class ArmCommands:
         self.magnet = MagnetControl()
 
         self.current_set_path = self.storage.create_next_train_folder()
+        self.cloud_url = "http://192.168.178.19:6000/"
 
-    def do_recording(self):
+    def record_training_video(self):
         """
-        This function records a video which later can be used to create a training dataset by utilizing sorterbot_labeltool. After the video
+        Records a video which later can be used to create a training dataset by utilizing sorterbot_labeltool. After the video
         is recorded, it will be uploaded to the appropriate s3 bucket.
 
         """
@@ -47,15 +50,53 @@ class ArmCommands:
         executor.submit(self.storage.upload_file, "sorterbot-training-videos", video_path)
         executor.submit(self.sc.init_arm_position)
 
+    def infer_and_sort(self):
+        """
+        Controls the process of localizing objects and moving them to the containers on the Raspberry side.
+        First it takes images for inference, sends them for processing, and after all of them were successfully processed,
+        requests the session's commands from the cloud service. After the commands are received, executes them one by one
+        and returns the arm to the initial position.
+
+        """
+
+        # Take pictures and send them for processing
+        results = self.take_pictures()
+
+        # Check if all of the pictures were processed successfully
+        all_success = all([res["res_status_code"] == 200 for res in results])
+
+        # If all successful, send a request to process session images and generate commands
+        if all_success:
+            commands_as_pw = self.get_commands_of_session()
+        else:
+            for res in results:
+                if res["res_status_code"] != 200:
+                    print(res)
+
+        # Instruct arm to move each object to the appropriate containers
+        for cmd in commands_as_pw:
+            self.sc.move_to_position(cmd[0])
+            self.magnet.on()
+            self.sc.move_to_position(cmd[1], is_container=True)
+            self.magnet.off()
+
+        # Reset arm to initial position
+        self.reset_arm()
+
     def take_pictures(self):
         """
-        This function takes pictures for inference. After the pictures are taken, they will be uploaded to s3 and an http request
+        Takes pictures for inference. After the pictures are taken, they will be uploaded to s3 and an http request
         containing the URL of the images will be sent to sorterbot_cloud to start inference and locate objects of interest.
+
+        Returns
+        -------
+        results : list of ints
+            List of response status codes returned by the cloud service.
 
         """
 
         # Construct session path
-        curr_sess_path = self.storage.create_next_session_folder()
+        self.curr_sess_path = self.storage.create_next_session_folder()
 
         # Init arm position for inference
         self.sc.init_arm_position(is_inference=True)
@@ -64,10 +105,11 @@ class ArmCommands:
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
 
         # Generate positions where pictures will be taken
-        steps = reversed(range(1000, 2200, 200))
+        futures = []
+        steps = list(reversed(range(1000, 2200, 200)))
         for step in steps:
             # Construct image path
-            image_path = os.path.join(curr_sess_path, f"{step}.jpg")
+            image_path = os.path.join(self.curr_sess_path, f"{step}.jpg")
 
             # Move arm to next position
             self.sc.execute_commands([(0, step)])
@@ -78,33 +120,77 @@ class ArmCommands:
             # Take the picture
             self.camera.take_picture(image_path)
 
-            # Upload it to S3
-            executor.submit(self.storage.upload_file, "sorterbot", image_path)
+            # Upload it to S3 async
+            future = executor.submit(self.upload_and_process_img, image_path)
+            futures.append(future)
 
-    def move_object_to_container(self, obj_pos, cont_pos):
+        results = []
+        for future in concurrent.futures.as_completed(futures):
+            results.append({
+                "image_id": step,
+                "res_status_code": future.result()
+            })
+
+        # Wait until all images are processed
+        executor.shutdown(wait=True)
+
+        return results
+
+    def upload_and_process_img(self, image_path):
         """
-        This function instructs the arm to move to the object's position, turn on the magnet, move to the containers position then turn off the magnet.
+        Takes an image from disk, uploads it to S3 and sends a request to the cloud service with the name of the image
+        to start the processing.
 
         Parameters
         ----------
-        obj_pos : tuple
-            A tuple containing the polar coordinates of the object. The first element corresponds to the pulse_width which servo0 needs to receive in order
-            to move to the correct position, and the second element corrensponds to the distance in pixels from the top of the picture used for inference.
+        image_path : str
+            Path of the image on disk to be uploaded and processed.
 
-        cont_pos : tuple
-            A tuple containing the polar coordinates of the container. The first element corresponds to the pulse_width which servo0 needs to receive in order
-            to move to the correct position, and the second element corresponds to the distance in pixels from the top of the picture used for inference.
+        Returns
+        -------
+        status_code : int
+            Status code of the response from the cloud service.
 
         """
 
-        self.sc.move_to_position(obj_pos)
-        self.magnet.on()
-        self.sc.move_to_position(cont_pos, is_container=True)
-        self.magnet.off()
+        self.storage.upload_file("sorterbot", image_path)
+        params = {
+            "session_id": os.path.basename(self.curr_sess_path),
+            "image_name": os.path.basename(image_path),
+        }
+
+        status_code = requests.post(urljoin(self.cloud_url, "process_image"), params=params).status_code
+
+        return status_code
+
+    def get_commands_of_session(self):
+        """
+        Sends a request to the cloud service to process the session and generate commands. Should be sent only after every image in the session
+        has been successfully processed.
+
+        Returns
+        -------
+        commands : list
+            List of tuples of tuples, containing the commands that can be directly executed by the arm. The first tuple contains the position
+            of the item, the second contains the position of the container. Both of them contain the positions as polar coordinates, where the first
+            element is the angle and the second element is the distance. Units are converted to pulse widths, which can be directly executed by the arm.
+
+        """
+
+        params = {
+            "session_id": os.path.basename(self.curr_sess_path),
+        }
+        res = requests.post(urljoin(self.cloud_url, "get_commands_of_session"), params=params)
+
+        if res.status_code == 200:
+            return res.json()
+        else:
+            print("Request to get commands failed!")
+            print(res)
 
     def reset_arm(self):
         """
-        This function insturcts the arm to return to the start position.
+        Instructs the arm to return to the start position.
 
         """
 
@@ -114,10 +200,11 @@ class ArmCommands:
             (1, self.sc.start_positions[1]),
             (3, self.sc.start_positions[3])
         ), parallel=True)
+        self.sc.neutralize_servos()
 
     def close(self):
         """
-        This function closes the session: stops the camera in case it's recording, moves the arm to starting position and neutralizes the servos.
+        Closes the session: stops the camera in case it's recording, moves the arm to starting position and neutralizes the servos.
 
         """
 
@@ -138,7 +225,7 @@ while True:
         elif cmd == 1:
             commands.sc.init_arm_position()
         elif cmd == 2:
-            commands.do_recording()
+            commands.record_training_video()
         elif cmd == 3:
             commands.take_pictures()
         elif cmd == 4:
@@ -159,6 +246,20 @@ while True:
             cont_angle = int(input("Container Angle: "))
             cont_dist = int(input("Container Distance: "))
             commands.move_object_to_container((obj_angle, obj_dist,), (cont_angle, cont_dist))
+        elif cmd == 8:
+            pixel_angle = int(input("Pixel angle: "))
+            new_pw_angle = commands.convert_command_angle(pixel_angle)
+            print(new_pw_angle)
+        elif cmd == 9:
+            commands.infer_and_sort()
+        elif cmd == 10:
+            commands.convert_command_to_polar({
+                "img_base_angle": 1425,
+                "img_dims": [1640, 1232],
+                "locations_as_pixels": ((820, 0,), (820, 1232,),)
+            })
+        elif cmd == 11:
+            commands.filter_duplicate_positions([(1455.8194454670409, 1640.2550963180688), (1305.3293199180484, 1232.5792585756476), (1020.130933314334, 1844.6160327887617), (1339.5320714079303, 1855.2308768926205), (1561.6438853079546, 1307.4115533251302), (1740.7008299435813, 1523.2044400191508), (1619.2404831864485, 1339.1886733551323), (1700.0540257146777, 1507.7658838736122), (1467.7368179032735, 1647.7691177720542), (1314.814153218803, 1234.5349345090485), (1350.7423864318368, 1864.9636021690299), (1575.215952456132, 1304.2532593094427), (1656.1526068281983, 1727.5550014215837), (1015.4801892454399, 1822.9144826194706), (1292.6923350135394, 1247.4895924617376), (1300.9698980485962, 1456.495902509347), (1724.5350831335736, 1514.0857223938847), (1684.8220078074987, 1749.2826567152358), (1597.6762654563888, 1318.4475549061426), (1709.7546353079906, 1511.1570045990097), (1487.1105754946368, 1654.7772611680075), (1672.505961718362, 1737.8291536149027), (1366.4454348457552, 1883.4748152407078), (1589.4983507666955, 1312.7055035675012), (1326.3400103385557, 1249.2387899050423)])
     except Exception as e:
         commands.close()
         raise e
