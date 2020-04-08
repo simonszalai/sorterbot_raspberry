@@ -11,6 +11,7 @@ import concurrent.futures
 from time import sleep
 from datetime import datetime
 from urllib.parse import urljoin
+from yaml import load, Loader, YAMLError
 
 from camera import Camera
 from storage import Storage
@@ -31,7 +32,15 @@ class ArmCommands:
         self.magnet = MagnetControl()
 
         self.current_set_path = self.storage.create_next_train_folder()
-        self.cloud_url = "http://192.168.178.19:6000/"
+
+        # Parse config.yaml
+        with open("arm_config.yaml", 'r') as stream:
+            try:
+                config = load(stream, Loader)
+            except YAMLError as error:
+                print("Error while opening config.yaml ", error)
+
+        self.config = config
 
     def record_training_video(self):
         """
@@ -157,9 +166,10 @@ class ArmCommands:
         params = {
             "session_id": os.path.basename(self.curr_sess_path),
             "image_name": os.path.basename(image_path),
+            "arm_id": self.config["arm_id"]
         }
 
-        status_code = requests.post(urljoin(self.cloud_url, "process_image"), params=params).status_code
+        status_code = requests.post(urljoin(self.config["cloud_url"], "process_image"), params=params).status_code
 
         return status_code
 
@@ -180,13 +190,13 @@ class ArmCommands:
         params = {
             "session_id": os.path.basename(self.curr_sess_path),
         }
-        res = requests.post(urljoin(self.cloud_url, "get_commands_of_session"), params=params)
+        res = requests.post(urljoin(self.config["cloud_url"], "get_commands_of_session"), params=params, json=self.config)
 
         if res.status_code == 200:
             return res.json()
         else:
-            print("Request to get commands failed!")
             print(res)
+            return []
 
     def reset_arm(self):
         """
