@@ -41,6 +41,7 @@ class ArmCommands:
                 print("Error while opening config.yaml ", error)
 
         self.config = config
+        self.cloud_url = f"http://{config['cloud_ip']}:{config['cloud_port']}/"
 
     def record_training_video(self):
         """
@@ -169,7 +170,7 @@ class ArmCommands:
             "arm_id": self.config["arm_id"]
         }
 
-        status_code = requests.post(urljoin(self.config["cloud_url"], "process_image"), params=params).status_code
+        status_code = requests.post(urljoin(self.cloud_url, "process_image"), params=params).status_code
 
         return status_code
 
@@ -190,7 +191,7 @@ class ArmCommands:
         params = {
             "session_id": os.path.basename(self.curr_sess_path),
         }
-        res = requests.post(urljoin(self.config["cloud_url"], "get_commands_of_session"), params=params, json=self.config)
+        res = requests.post(urljoin(self.cloud_url, "get_commands_of_session"), params=params, json=self.config)
 
         if res.status_code == 200:
             return res.json()
@@ -224,54 +225,54 @@ class ArmCommands:
         self.sc.neutralize_servos()
 
 
-commands = ArmCommands()
+# commands = ArmCommands()
 
-while True:
-    try:
-        cmd = int(input("Command: "))
-        if cmd == 0:
-            commands.close()
-            break
-        elif cmd == 1:
-            commands.sc.init_arm_position()
-        elif cmd == 2:
-            commands.record_training_video()
-        elif cmd == 3:
-            commands.take_pictures()
-        elif cmd == 4:
-            commands.sc.execute_command((commands.servos[3], 1780))
-        elif cmd == 5:
-            while True:
-                servo = input("Servo: ")
-                angle = input("Angle: ")
-                commands.sc.execute_command((int(servo), int(angle),))
-        elif cmd == 6:
-            angle = input("Angle: ")
-            dist = input("Distance: ")
-            cont = bool(int(input("Is container: ")))
-            commands.sc.move_to_position((int(angle), int(dist),), is_container=cont)
-        elif cmd == 7:
-            obj_angle = int(input("Object Angle: "))
-            obj_dist = int(input("Object Distance: "))
-            cont_angle = int(input("Container Angle: "))
-            cont_dist = int(input("Container Distance: "))
-            commands.move_object_to_container((obj_angle, obj_dist,), (cont_angle, cont_dist))
-        elif cmd == 8:
-            pixel_angle = int(input("Pixel angle: "))
-            new_pw_angle = commands.convert_command_angle(pixel_angle)
-            print(new_pw_angle)
-        elif cmd == 9:
-            commands.infer_and_sort()
-        elif cmd == 10:
-            commands.convert_command_to_polar({
-                "img_base_angle": 1425,
-                "img_dims": [1640, 1232],
-                "locations_as_pixels": ((820, 0,), (820, 1232,),)
-            })
-        elif cmd == 11:
-            commands.filter_duplicate_positions([(1455.8194454670409, 1640.2550963180688), (1305.3293199180484, 1232.5792585756476), (1020.130933314334, 1844.6160327887617), (1339.5320714079303, 1855.2308768926205), (1561.6438853079546, 1307.4115533251302), (1740.7008299435813, 1523.2044400191508), (1619.2404831864485, 1339.1886733551323), (1700.0540257146777, 1507.7658838736122), (1467.7368179032735, 1647.7691177720542), (1314.814153218803, 1234.5349345090485), (1350.7423864318368, 1864.9636021690299), (1575.215952456132, 1304.2532593094427), (1656.1526068281983, 1727.5550014215837), (1015.4801892454399, 1822.9144826194706), (1292.6923350135394, 1247.4895924617376), (1300.9698980485962, 1456.495902509347), (1724.5350831335736, 1514.0857223938847), (1684.8220078074987, 1749.2826567152358), (1597.6762654563888, 1318.4475549061426), (1709.7546353079906, 1511.1570045990097), (1487.1105754946368, 1654.7772611680075), (1672.505961718362, 1737.8291536149027), (1366.4454348457552, 1883.4748152407078), (1589.4983507666955, 1312.7055035675012), (1326.3400103385557, 1249.2387899050423)])
-    except Exception as e:
-        commands.close()
-        raise e
+# while True:
+#     try:
+#         cmd = int(input("Command: "))
+#         if cmd == 0:
+#             commands.close()
+#             break
+#         elif cmd == 1:
+#             commands.sc.init_arm_position()
+#         elif cmd == 2:
+#             commands.record_training_video()
+#         elif cmd == 3:
+#             commands.take_pictures()
+#         elif cmd == 4:
+#             commands.sc.execute_command((commands.servos[3], 1780))
+#         elif cmd == 5:
+#             while True:
+#                 servo = input("Servo: ")
+#                 angle = input("Angle: ")
+#                 commands.sc.execute_command((int(servo), int(angle),))
+#         elif cmd == 6:
+#             angle = input("Angle: ")
+#             dist = input("Distance: ")
+#             cont = bool(int(input("Is container: ")))
+#             commands.sc.move_to_position((int(angle), int(dist),), is_container=cont)
+#         elif cmd == 7:
+#             obj_angle = int(input("Object Angle: "))
+#             obj_dist = int(input("Object Distance: "))
+#             cont_angle = int(input("Container Angle: "))
+#             cont_dist = int(input("Container Distance: "))
+#             commands.move_object_to_container((obj_angle, obj_dist,), (cont_angle, cont_dist))
+#         elif cmd == 8:
+#             pixel_angle = int(input("Pixel angle: "))
+#             new_pw_angle = commands.convert_command_angle(pixel_angle)
+#             print(new_pw_angle)
+#         elif cmd == 9:
+#             commands.infer_and_sort()
+#         elif cmd == 10:
+#             commands.convert_command_to_polar({
+#                 "img_base_angle": 1425,
+#                 "img_dims": [1640, 1232],
+#                 "locations_as_pixels": ((820, 0,), (820, 1232,),)
+#             })
+#         elif cmd == 11:
+#             commands.filter_duplicate_positions([(1455.8194454670409, 1640.2550963180688), (1305.3293199180484, 1232.5792585756476), (1020.130933314334, 1844.6160327887617), (1339.5320714079303, 1855.2308768926205), (1561.6438853079546, 1307.4115533251302), (1740.7008299435813, 1523.2044400191508), (1619.2404831864485, 1339.1886733551323), (1700.0540257146777, 1507.7658838736122), (1467.7368179032735, 1647.7691177720542), (1314.814153218803, 1234.5349345090485), (1350.7423864318368, 1864.9636021690299), (1575.215952456132, 1304.2532593094427), (1656.1526068281983, 1727.5550014215837), (1015.4801892454399, 1822.9144826194706), (1292.6923350135394, 1247.4895924617376), (1300.9698980485962, 1456.495902509347), (1724.5350831335736, 1514.0857223938847), (1684.8220078074987, 1749.2826567152358), (1597.6762654563888, 1318.4475549061426), (1709.7546353079906, 1511.1570045990097), (1487.1105754946368, 1654.7772611680075), (1672.505961718362, 1737.8291536149027), (1366.4454348457552, 1883.4748152407078), (1589.4983507666955, 1312.7055035675012), (1326.3400103385557, 1249.2387899050423)])
+#     except Exception as e:
+#         commands.close()
+#         raise e
 
-    sleep(0.5)
+#     sleep(0.5)

@@ -1,5 +1,6 @@
 arm_id: "ARM001"
-cloud_url: "http://127.0.0.1:6000/"
+cloud_ip: "127.0.0.1"
+cloud_port: 6000
 arm_radius: 1500
 rotation_range_as_deg: 130
 rotation_range_as_pw: 1400
