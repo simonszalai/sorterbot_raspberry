@@ -8,6 +8,7 @@ the servo motors, they are doing higher level operations which consists of serie
 import os
 import requests
 import concurrent.futures
+from functools import reduce
 from time import sleep
 from datetime import datetime
 from urllib.parse import urljoin
@@ -17,6 +18,7 @@ from camera import Camera
 from storage import Storage
 from magnet import MagnetControl
 from servo_control import ServoControl
+from logger import logger
 
 
 class ArmCommands:
@@ -42,6 +44,7 @@ class ArmCommands:
 
         self.config = config
         self.cloud_url = f"http://{config['cloud_ip']}:{config['cloud_port']}/"
+        self.control_url = f"http://{config['control_ip']}:{config['control_port']}/"
 
     def record_training_video(self):
         """
@@ -116,26 +119,45 @@ class ArmCommands:
 
         # Generate positions where pictures will be taken
         futures = []
-        steps = list(reversed(range(1000, 2200, 200)))
+        steps = list(reversed(range(1000, 2000, 200)))
+
+        # Create new session at the Control Panel
+        arm_id = self.config["arm_id"]
+        session_id = os.path.basename(self.curr_sess_path)
+        add_sess_res = requests.post(self.control_url + "api/sessions/", json={
+            "arm": arm_id,
+            "session_id": session_id,
+            "status": "In Progress",
+            "log_filenames": ",".join(reversed([str(step) for step in steps]))
+        })
+
+        # Execute sequence
         for step in steps:
             # Construct image path
             image_path = os.path.join(self.curr_sess_path, f"{step}.jpg")
 
             # Move arm to next position
+            logger.info(f"Moving arm to position...", {"arm_id": arm_id, "session_id": session_id, "log_type": step})
             self.sc.execute_commands([(0, step)])
 
             # Wait a bit for stabilization
             sleep(0.5)
 
             # Take the picture
+            logger.info(f"Arm is in position and stable, taking picture...", {"arm_id": arm_id, "session_id": session_id, "log_type": step})
             self.camera.take_picture(image_path)
 
             # Upload it to S3 async
+            logger.info(f"Picture taken, starting upload to AWS S3...", {"arm_id": arm_id, "session_id": session_id, "log_type": step})
             future = executor.submit(self.upload_and_process_img, image_path)
             futures.append(future)
 
         results = []
         for future in concurrent.futures.as_completed(futures):
+            logger.info(
+                f"Uploading picture finished with status code: {future.result()}",
+                {"arm_id": arm_id, "session_id": session_id, "log_type": step}
+            )
             results.append({
                 "image_id": step,
                 "res_status_code": future.result()

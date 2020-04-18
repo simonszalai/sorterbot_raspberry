@@ -49,7 +49,7 @@ class Storage:
         """
 
         sessions_path = os.path.join(Path(__file__).resolve().parent.parent, "sessions")
-        curr_sess_path = os.path.join(sessions_path, f"sess_{datetime.now().strftime('%d_%m_%Y__%H_%M_%S')}")
+        curr_sess_path = os.path.join(sessions_path, f"sess_{datetime.now().strftime('%Y_%m_%d__%H_%M_%S')}")
         os.makedirs(curr_sess_path, exist_ok=True)
 
         return curr_sess_path

@@ -18,7 +18,7 @@ def one_checkin_cycle():
             print("Error while opening config.yaml ", error)
 
     # Get Cloud Service Public IP from Control Panel
-    response_1 = requests.post(urljoin(config["control_url"], "get_cloud_ip") + "/", json={"arm_id": config["arm_id"]})
+    response_1 = requests.post(urljoin(commands.control_url, "get_cloud_ip") + "/", json={"arm_id": config["arm_id"]})
     cloud_ip = "192.168.178.19"  # str(json.loads(response_1.content)["cloud_ip"])
 
     # Save newly retrieved Cloud IP to config
@@ -41,7 +41,7 @@ def one_checkin_cycle():
         "arm_id": config["arm_id"],
         "cloud_connect_success": cloud_connect_success
     }
-    response_3 = requests.post(urljoin(config["control_url"], "send_connection_status") + "/", json=payload)
+    response_3 = requests.post(urljoin(commands.control_url, "send_connection_status") + "/", json=payload)
     print(response_3)
     print(json.loads(response_3.content))
     should_start_session = json.loads(response_3.content)["should_start_session"]
@@ -53,7 +53,7 @@ while True:
     print("Checking in...")
     should_start_session = one_checkin_cycle()
     if should_start_session:
-        # commands.infer_and_sort()
+        commands.infer_and_sort()
         sleep(3)
     else:
         sleep(3)
