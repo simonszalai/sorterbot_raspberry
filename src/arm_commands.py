@@ -8,7 +8,6 @@ the servo motors, they are doing higher level operations which consists of serie
 import os
 import requests
 import concurrent.futures
-from functools import reduce
 from time import sleep
 from datetime import datetime
 from urllib.parse import urljoin
@@ -74,27 +73,40 @@ class ArmCommands:
 
         # Take pictures and send them for processing
         results = self.take_pictures()
+        log_args = {"arm_id": self.arm_id, "session_id": self.session_id, "log_type": "comm_exec"}
+        logger.info(f"All pictures taken and uploads started.", log_args)
 
         # Check if all of the pictures were processed successfully
-        all_success = all([res["res_status_code"] == 200 for res in results])
+        all_success = all([res["res_status_code"][0] == 200 for res in results])
 
         # If all successful, send a request to process session images and generate commands
         if all_success:
             commands_as_pw = self.get_commands_of_session()
+            logger.info(f"All pictures successfully uploaded.", log_args)
         else:
+            commands_as_pw = []
             for res in results:
                 if res["res_status_code"] != 200:
-                    print(res)
+                    logger.error(f"Error while uploading image: {res}", log_args)
 
         # Instruct arm to move each object to the appropriate containers
         for cmd in commands_as_pw:
             self.sc.move_to_position(cmd[0])
+            logger.info(f"Arm moved to object at position ({int(cmd[0][0])}, {int(cmd[0][1])}) for pick up.", log_args)
             self.magnet.on()
+            logger.info(f"Magnet ON.", log_args)
             self.sc.move_to_position(cmd[1], is_container=True)
+            logger.info(f"Arm moved to container at position ({int(cmd[1][0])}, {int(cmd[1][1])}) for drop off.", log_args)
             self.magnet.off()
+            logger.info(f"Magnet OFF.", log_args)
 
         # Reset arm to initial position
         self.reset_arm()
+        logger.info(f"Arm reset to initial position.", log_args)
+
+        # Send final log os session
+        log_args["session_finished"] = 1
+        logger.info("Session completed!", log_args)
 
     def take_pictures(self):
         """
@@ -119,44 +131,48 @@ class ArmCommands:
 
         # Generate positions where pictures will be taken
         futures = []
-        steps = list(reversed(range(1000, 2000, 200)))
+        steps = list(reversed(range(1000, 2000, 50)))
 
         # Create new session at the Control Panel
-        arm_id = self.config["arm_id"]
-        session_id = os.path.basename(self.curr_sess_path)
+        self.arm_id = self.config["arm_id"]
+        self.session_id = os.path.basename(self.curr_sess_path)
         add_sess_res = requests.post(self.control_url + "api/sessions/", json={
-            "arm": arm_id,
-            "session_id": session_id,
+            "arm": self.arm_id,
+            "session_id": self.session_id,
             "status": "In Progress",
             "log_filenames": ",".join(reversed([str(step) for step in steps]))
         })
 
         # Execute sequence
         for step in steps:
+            log_args = {"arm_id": self.arm_id, "session_id": self.session_id, "log_type": step}
+
             # Construct image path
             image_path = os.path.join(self.curr_sess_path, f"{step}.jpg")
 
             # Move arm to next position
-            logger.info(f"Moving arm to position...", {"arm_id": arm_id, "session_id": session_id, "log_type": step})
             self.sc.execute_commands([(0, step)])
+            logger.info(f"Arm is in position.", log_args)
 
             # Wait a bit for stabilization
-            sleep(0.5)
+            sleep(0.25)
+            logger.info(f"Arm is stabilized.", log_args)
 
             # Take the picture
-            logger.info(f"Arm is in position and stable, taking picture...", {"arm_id": arm_id, "session_id": session_id, "log_type": step})
             self.camera.take_picture(image_path)
+            logger.info(f"Picture taken.", log_args)
 
             # Upload it to S3 async
-            logger.info(f"Picture taken, starting upload to AWS S3...", {"arm_id": arm_id, "session_id": session_id, "log_type": step})
-            future = executor.submit(self.upload_and_process_img, image_path)
+            future = executor.submit(self.upload_and_process_img, image_path, step)
             futures.append(future)
+            logger.info(f"Image upload to AWS s3 started.", log_args)
 
         results = []
         for future in concurrent.futures.as_completed(futures):
+            status_code, step_threaded = future.result()
             logger.info(
-                f"Uploading picture finished with status code: {future.result()}",
-                {"arm_id": arm_id, "session_id": session_id, "log_type": step}
+                f"All images finished uploading, current image's upload finished with status code: {status_code}",
+                {"arm_id": self.arm_id, "session_id": self.session_id, "log_type": step_threaded}
             )
             results.append({
                 "image_id": step,
@@ -168,7 +184,7 @@ class ArmCommands:
 
         return results
 
-    def upload_and_process_img(self, image_path):
+    def upload_and_process_img(self, image_path, step):
         """
         Takes an image from disk, uploads it to S3 and sends a request to the cloud service with the name of the image
         to start the processing.
@@ -177,6 +193,9 @@ class ArmCommands:
         ----------
         image_path : str
             Path of the image on disk to be uploaded and processed.
+        step : int
+            Identifies the image, corresponds to the pulse width of servo0 where the image was taken. Used to correctly
+            place the log after upload was done.
 
         Returns
         -------
@@ -185,7 +204,7 @@ class ArmCommands:
 
         """
 
-        self.storage.upload_file("sorterbot", image_path)
+        self.storage.upload_file("sorterbot", image_path, self.config["arm_id"])
         params = {
             "session_id": os.path.basename(self.curr_sess_path),
             "image_name": os.path.basename(image_path),
@@ -194,7 +213,7 @@ class ArmCommands:
 
         status_code = requests.post(urljoin(self.cloud_url, "process_image"), params=params).status_code
 
-        return status_code
+        return status_code, step
 
     def get_commands_of_session(self):
         """
@@ -218,7 +237,6 @@ class ArmCommands:
         if res.status_code == 200:
             return res.json()
         else:
-            print(res)
             return []
 
     def reset_arm(self):
