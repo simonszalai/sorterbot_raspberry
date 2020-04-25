@@ -17,7 +17,7 @@ class Storage:
         """
         self.s3 = boto3.resource("s3")
 
-    def upload_file(self, bucket, path):
+    def upload_file(self, bucket, path, arm_id=""):
         """
         Uploads a file to s3.
 
@@ -27,6 +27,8 @@ class Storage:
             Bucket name on AWS s3.
         path : str
             Path of the file to be uploaded.
+        arm_id : str
+            Identifier of the arm.
 
         """
 
@@ -34,7 +36,7 @@ class Storage:
         print(f"Uploading {filename}...")
         dir_tree = os.path.dirname(path)
         parent_folder = os.path.basename(dir_tree)
-        self.s3.Bucket(bucket).upload_file(path, os.path.join(parent_folder, filename))
+        self.s3.Bucket(bucket).upload_file(path, os.path.join(arm_id, parent_folder, filename))
         print(f"Upload of {filename} completed!")
 
     def create_next_session_folder(self):
