@@ -10,20 +10,61 @@ from yaml import load, dump, Loader, YAMLError
 
 from arm_commands import ArmCommands
 
-commands = ArmCommands()
-core_ws_uri = "ws://192.168.178.19:8000/ws_rpi/"
-cloud_ws_uri = "ws://192.168.178.19:6000/echo"
+
+# core_ws_uri = "ws://192.168.178.19:8000/rpi/"
+# cloud_ws_uri = "ws://192.168.178.19:9005"
 
 
-def heartbeat():
-    async def hello():
-        async with websockets.connect(cloud_ws_uri) as websocket:
-            # await websocket.send("hello0")
+class Main:
+    def __init__(self):
+        # Parse config.yaml
+        with open("arm_config.yaml", 'r') as stream:
+            try:
+                self.config = load(stream, Loader)
+            except YAMLError as error:
+                print("Error while opening config.yaml ", error)
 
-            greeting = await websocket.recv()
-            print(f"< {greeting}")
+        self.commands = ArmCommands()
+        self.control_url = f"ws://{self.config['control_ip']}:{self.config['control_port']}/rpi/"
 
-    asyncio.get_event_loop().run_until_complete(hello())
+    async def heartbeat(self):
+        async with websockets.connect(self.control_url) as websocket:
+            # Retrieve Cloud IP from Control Panel and add Arm if this is the first check in
+            await websocket.send(json.dumps({
+                "command": "get_cloud_ip",
+                "arm_id": self.config["arm_id"]
+            }))
+            cloud_ip = json.loads(await websocket.recv())
+
+        if not cloud_ip:
+            print("Cloud Service is down, retrying in 3s...")
+            return
+
+        # Try to connect to Cloud Service using the IP retrieved above
+        cloud_url = f"ws://{cloud_ip}:{self.config['cloud_port']}"
+        async with websockets.connect(cloud_url) as websocket:
+            await websocket.send(json.dumps({
+                "command": "get_status"
+            }))
+            cloud_conn_status = json.loads(await websocket.recv())["status"]
+
+        if cloud_conn_status:
+            # Save newly retrieved Cloud IP to config if connection was successful
+            self.config["cloud_ip"] = cloud_ip
+            with open("arm_config.yaml", "w") as outfile:
+                dump(self.config, outfile, default_flow_style=False)
+
+        # Report back to Control Panel if connecting to the Cloud Service was successful
+        async with websockets.connect(self.control_url) as websocket:
+            # Retrieve Cloud IP from Control Panel and add Arm if this is the first check in
+            await websocket.send(json.dumps({
+                "command": "send_conn_status",
+                "arm_id": self.config["arm_id"],
+                "cloud_conn_status": cloud_conn_status
+            }))
+            should_start_session = await websocket.recv()
+
+        return should_start_session
 
 
 def one_checkin_cycle():
@@ -70,12 +111,18 @@ def one_checkin_cycle():
     return should_start_session
 
 
-while True:
-    print("Checking in...")
-    # should_start_session = one_checkin_cycle()
-    heartbeat()
-    if should_start_session:
-        commands.infer_and_sort()
-        sleep(3)
-    else:
-        sleep(3)
+
+
+
+if __name__ == '__main__':
+    main = Main()
+    while True:
+        print("Checking in...")
+        # should_start_session = one_checkin_cycle()
+        asyncio.get_event_loop().run_until_complete(main.heartbeat())
+        should_start_session = False
+        if should_start_session:
+            # commands.infer_and_sort()
+            sleep(3)
+        else:
+            sleep(3)
