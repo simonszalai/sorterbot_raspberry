@@ -1,5 +1,7 @@
 import json
 import requests
+import asyncio
+import websockets
 from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from time import sleep
@@ -9,6 +11,19 @@ from yaml import load, dump, Loader, YAMLError
 from arm_commands import ArmCommands
 
 commands = ArmCommands()
+core_ws_uri = "ws://192.168.178.19:8000/ws_rpi/"
+cloud_ws_uri = "ws://192.168.178.19:6000/echo"
+
+
+def heartbeat():
+    async def hello():
+        async with websockets.connect(cloud_ws_uri) as websocket:
+            # await websocket.send("hello0")
+
+            greeting = await websocket.recv()
+            print(f"< {greeting}")
+
+    asyncio.get_event_loop().run_until_complete(hello())
 
 
 def one_checkin_cycle():
@@ -57,7 +72,8 @@ def one_checkin_cycle():
 
 while True:
     print("Checking in...")
-    should_start_session = one_checkin_cycle()
+    # should_start_session = one_checkin_cycle()
+    heartbeat()
     if should_start_session:
         commands.infer_and_sort()
         sleep(3)
