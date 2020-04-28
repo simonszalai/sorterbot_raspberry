@@ -204,9 +204,9 @@ if __name__ == "__main__":
             should_start_session = False
             if should_start_session:
                 # commands.infer_and_sort()
-                sleep(self.heart_rate)
+                sleep(main.heart_rate)
             else:
-                sleep(self.heart_rate)
+                sleep(main.heart_rate)
     except KeyboardInterrupt:
         main.loop.run_until_complete(main.control_websocket.close())
         main.loop.run_until_complete(main.cloud_websocket.close())
