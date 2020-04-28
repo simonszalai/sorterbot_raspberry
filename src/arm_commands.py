@@ -42,8 +42,8 @@ class ArmCommands:
                 print("Error while opening config.yaml ", error)
 
         self.config = config
-        self.cloud_url = f"http://{config['cloud_ip']}:{config['cloud_port']}/"
-        self.control_url = f"http://{config['control_ip']}:{config['control_port']}/"
+        self.cloud_url = f"http://{config['cloud_host']}:{config['cloud_port']}/"
+        self.control_url = f"http://{config['control_host']}:{config['control_port']}/"
 
     def record_training_video(self):
         """

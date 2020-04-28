@@ -1,128 +1,213 @@
 import json
-import requests
 import asyncio
 import websockets
-from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
 from time import sleep
-from urllib.parse import urljoin
 from yaml import load, dump, Loader, YAMLError
 
 from arm_commands import ArmCommands
 
 
-# core_ws_uri = "ws://192.168.178.19:8000/rpi/"
-# cloud_ws_uri = "ws://192.168.178.19:9005"
-
-
 class Main:
-    def __init__(self):
-        # Parse config.yaml
+    """
+    Manages WebSocket connections to Cloud service and Control Panel and starts new sessions as instructions from the user arrives
+    from the Control Panel. The connections are opened when this file is run and periodically checked with pings if they are still working.
+    If a connection is not responding, it is automatically closed and reopened. If the WebSocket server is down, the client will try to
+    reconnect periodically. At the end of every heartbeat, connection status is reported to the Control Panel.
+
+    Parameters
+    ----------
+    heart_rate : int
+        Length of interval in seconds in which the connection checks and status reports are executed.
+
+    """
+
+    def __init__(self, heart_rate=3):
+        self.heart_rate = heart_rate
+        self.load_config()
+        self.loop = asyncio.get_event_loop()
+        self.commands = ArmCommands()
+        self.control_websocket = None
+        self.cloud_websocket = None
+
+    async def heartbeat(self):
+        """
+        Heartbeat function, which is executed in a certain interval to check WebSocket connection statuses and set up
+        connections as needed. First, it checks if there is an open and responsive connection to the Cloud service. If not, it will
+        try to open a connection using the host address saved in arm_config.yaml. If the connection cannot be opened, retrieves the
+        Cloud host address from the Control Panel and tries to establish a connection using that. If it succeeds, the new host will
+        be saved to arm_config.yaml. Finally, the connection status is sent to the Control Panel. In case there is a healthy connection
+        to the Cloud service and the user pressed the start button, a new session will be initiated. If there is no connection, the
+        session will not be started even if the start button was pressed.
+
+        Returns
+        -------
+        should_start_session : int
+            0 or 1, representing if the session should be started. Integer values are used instead of bool, because they are directly
+            JSON serializable. If there is no connection to the Cloud service, the session cannot be started.
+
+        """
+
+        cloud_conn_status = 0
+
+        if self.cloud_websocket and self.cloud_websocket.open:
+            # If Cloud connection is open, try to ping it
+            cloud_conn_status = await self.ping_cloud()
+        else:
+            # If Cloud connection is closed, open it
+            success_connecting = await self.connect_cloud()
+            if not success_connecting:
+                # If openin connection was not successful, retreive the latest host address from Control Panel and try to connect with that
+                cloud_conn_status = await self.get_cloud_host_and_connect()
+
+        # Report back to Control Panel if connecting to the Cloud Service was successful and see if a new session should be started
+        await self.control_websocket.send(json.dumps({
+            "command": "send_conn_status",
+            "arm_id": self.config["arm_id"],
+            "cloud_conn_status": cloud_conn_status
+        }))
+        should_start_session = json.loads(await self.control_websocket.recv())
+
+        return should_start_session
+
+    async def connect_control(self):
+        """
+        Opens a WebSockets connection to the Control Panel using the address saved in arm_config.yaml. If the connection fails, it will keep
+        trying until it succeeds.
+
+        """
+
+        control_url = f"ws://{self.config['control_host']}:{self.config['control_port']}/rpi/"
+        control_connected = False
+        while not control_connected:
+            try:
+                self.control_websocket = await websockets.connect(control_url)
+                pong_waiter = await self.control_websocket.ping()
+                await pong_waiter
+                control_connected = True
+                print("Control Panel is online.")
+            except (ConnectionRefusedError, websockets.exceptions.ConnectionClosedError):
+                print("Control Panel is offline. Retrying in 3s...")
+                sleep(self.heart_rate)
+
+    async def connect_cloud(self, cloud_host=None):
+        """
+        Opens a WebSockets connection to the Cloud service.
+
+        Parameters
+        ----------
+        cloud_host : str
+            Optional parameter to specify the host of the connection. If none is provided, the host saved to the config file will be used.
+
+        Returns
+        -------
+        connection_success : int
+            0 or 1, representing if connecting to the Cloud service succeeded. Integer values are used
+            instead of bool, because they are directly JSON serializable.
+
+        """
+
+        cloud_url = f"ws://{cloud_host or self.config['cloud_host']}:{self.config['cloud_port']}"
+        try:
+            self.cloud_websocket = await websockets.connect(cloud_url)
+            pong_waiter = await self.cloud_websocket.ping()
+            await pong_waiter
+            return 1
+        except (ConnectionRefusedError, websockets.exceptions.ConnectionClosedError):
+            if cloud_host:
+                print("Cloud service is offline with latest host as well.")
+            else:
+                print("Cloud service is offline.")
+            return 0
+
+    async def ping_cloud(self):
+        """
+        Pings to WebSockets connection to the Cloud service. If the ping fails, closes the connection.
+
+        Returns
+        -------
+        connection_success : int
+            0 or 1, representing if pinging the Cloud service succeeded. Integer values are used
+            instead of bool, because they are directly JSON serializable.
+
+        """
+
+        try:
+            pong_waiter = await self.cloud_websocket.ping()
+            await pong_waiter
+            print("SorterBot Cloud is online.")
+            return 1
+        except websockets.exceptions.ConnectionClosedError:
+            print("WebSocket connection to SorterBot Cloud exists, but it is unresponsive, closing connection.")
+            await self.cloud_websocket.close()
+            self.cloud_websocket = None
+            return 0
+
+    async def get_cloud_host_and_connect(self):
+        """
+        Retrieves the latest address of the Cloud service from the Control Panel and attempts to connect using the
+        new host. If the connection succeeds, saves the new host to the config file.
+
+        Returns
+        -------
+        connection_success : int
+            0 or 1, representing if the attempted connection using the new host succeeded. Integer values are used
+            instead of bool, because they are directly JSON serializable.
+
+        """
+
+        # Retrieve Cloud host from Control Panel
+        await self.control_websocket.send(json.dumps({
+            "command": "get_cloud_ip",
+            "arm_id": self.config["arm_id"]
+        }))
+        new_cloud_host = json.loads(await self.control_websocket.recv())
+
+        # Try to connect to Cloud service with the new host
+        connected_to_new_host = await self.connect_cloud(cloud_host=new_cloud_host)
+
+        if connected_to_new_host:
+            # if connection was successful, save new host to config
+            self.config["cloud_host"] = new_cloud_host
+            with open("arm_config.yaml", "w") as outfile:
+                dump(self.config, outfile, default_flow_style=False)
+            # Reload config file to memory here, as this is the only place where it can be changed programmatically
+            self.load_config()
+            return 1
+        else:
+            return 0
+
+    def load_config(self):
+        """
+        Loads the contents of the config file (arm_config.yaml)
+
+        """
+
         with open("arm_config.yaml", 'r') as stream:
             try:
                 self.config = load(stream, Loader)
             except YAMLError as error:
                 print("Error while opening config.yaml ", error)
 
-        self.commands = ArmCommands()
-        self.control_url = f"ws://{self.config['control_ip']}:{self.config['control_port']}/rpi/"
 
-    async def heartbeat(self):
-        async with websockets.connect(self.control_url) as websocket:
-            # Retrieve Cloud IP from Control Panel and add Arm if this is the first check in
-            await websocket.send(json.dumps({
-                "command": "get_cloud_ip",
-                "arm_id": self.config["arm_id"]
-            }))
-            cloud_ip = json.loads(await websocket.recv())
-
-        if not cloud_ip:
-            print("Cloud Service is down, retrying in 3s...")
-            return
-
-        # Try to connect to Cloud Service using the IP retrieved above
-        cloud_url = f"ws://{cloud_ip}:{self.config['cloud_port']}"
-        async with websockets.connect(cloud_url) as websocket:
-            await websocket.send(json.dumps({
-                "command": "get_status"
-            }))
-            cloud_conn_status = json.loads(await websocket.recv())["status"]
-
-        if cloud_conn_status:
-            # Save newly retrieved Cloud IP to config if connection was successful
-            self.config["cloud_ip"] = cloud_ip
-            with open("arm_config.yaml", "w") as outfile:
-                dump(self.config, outfile, default_flow_style=False)
-
-        # Report back to Control Panel if connecting to the Cloud Service was successful
-        async with websockets.connect(self.control_url) as websocket:
-            # Retrieve Cloud IP from Control Panel and add Arm if this is the first check in
-            await websocket.send(json.dumps({
-                "command": "send_conn_status",
-                "arm_id": self.config["arm_id"],
-                "cloud_conn_status": cloud_conn_status
-            }))
-            should_start_session = await websocket.recv()
-
-        return should_start_session
-
-
-def one_checkin_cycle():
-    session = requests.Session()
-    retry = Retry(connect=100, backoff_factor=0.5)
-    adapter = HTTPAdapter(max_retries=retry)
-    session.mount('http://', adapter)
-    session.mount('https://', adapter)
-
-    # Parse config.yaml
-    with open("arm_config.yaml", 'r') as stream:
-        try:
-            config = load(stream, Loader)
-        except YAMLError as error:
-            print("Error while opening config.yaml ", error)
-
-    # Get Cloud Service Public IP from Control Panel
-    response_1 = session.post(urljoin(commands.control_url, "get_cloud_ip") + "/", json={"arm_id": config["arm_id"]})
-    cloud_ip = "192.168.178.19"  # str(json.loads(response_1.content)["cloud_ip"])
-
-    # Save newly retrieved Cloud IP to config
-    config["cloud_ip"] = cloud_ip
-    with open("arm_config.yaml", "w") as outfile:
-        dump(config, outfile, default_flow_style=False)
-
-    # Try to connect to Cloud Service using the IP retrieved above
-    try:
-        cloud_url = f"http://{config['cloud_ip']}:{config['cloud_port']}/"
-        response_2 = session.get(urljoin(cloud_url, "arm_checkin"))
-        cloud_connect_success = json.loads(response_2.content)["arm_checkin"]
-        print("Connection to SorterBot Cloud is successful.")
-    except requests.exceptions.RequestException:
-        print("SorterBot Cloud is down.")
-        cloud_connect_success = 0
-
-    # Report back to Control Panel if connecting to the Cloud Service was successful
-    payload = {
-        "arm_id": config["arm_id"],
-        "cloud_connect_success": cloud_connect_success
-    }
-    response_3 = session.post(urljoin(commands.control_url, "send_connection_status") + "/", json=payload)
-    should_start_session = json.loads(response_3.content)["should_start_session"]
-
-    return should_start_session
-
-
-
-
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     main = Main()
-    while True:
-        print("Checking in...")
-        # should_start_session = one_checkin_cycle()
-        asyncio.get_event_loop().run_until_complete(main.heartbeat())
-        should_start_session = False
-        if should_start_session:
-            # commands.infer_and_sort()
-            sleep(3)
-        else:
-            sleep(3)
+    try:
+        while True:
+            # Open connection to Control Panel if it's not open
+            if not main.control_websocket or not main.control_websocket.open:
+                print("Control Panel is offline, connecting...")
+                main.loop.run_until_complete(main.connect_control())
+
+            print("Checking in...")
+            should_start_session = main.loop.run_until_complete(main.heartbeat())
+            print(f"session should start: {should_start_session}")
+            should_start_session = False
+            if should_start_session:
+                # commands.infer_and_sort()
+                sleep(self.heart_rate)
+            else:
+                sleep(self.heart_rate)
+    except KeyboardInterrupt:
+        main.loop.run_until_complete(main.control_websocket.close())
+        main.loop.run_until_complete(main.cloud_websocket.close())
+        print("WebSocket connections to Cloud service and Control Panel closed.")
