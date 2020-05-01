@@ -6,11 +6,18 @@ the servo motors, they are doing higher level operations which consists of serie
 
 
 import os
+import zlib
+import json
+import base64
+import asyncio
 import requests
+import websockets
 import concurrent.futures
+from multiprocessing import Pool
 from time import sleep
 from datetime import datetime
 from urllib.parse import urljoin
+from pathlib import Path
 from yaml import load, Loader, YAMLError
 
 from camera import Camera
@@ -31,6 +38,7 @@ class ArmCommands:
         self.storage = Storage()
         self.sc = ServoControl()
         self.magnet = MagnetControl()
+        self.cloud_websocket = None
 
         self.current_set_path = self.storage.create_next_train_folder()
 
@@ -43,6 +51,7 @@ class ArmCommands:
 
         self.config = config
         self.cloud_url = f"http://{config['cloud_host']}:{config['cloud_port']}/"
+        self.ws_cloud_url = f"ws://{config['cloud_host']}:{config['cloud_port']}"
         self.control_url = f"http://{config['control_host']}:{config['control_port']}/"
 
     def record_training_video(self):
@@ -62,7 +71,7 @@ class ArmCommands:
         executor.submit(self.storage.upload_file, "sorterbot-training-videos", video_path)
         executor.submit(self.sc.init_arm_position)
 
-    def infer_and_sort(self):
+    async def infer_and_sort(self, cloud_websocket):
         """
         Controls the process of localizing objects and moving them to the containers on the Raspberry side.
         First it takes images for inference, sends them for processing, and after all of them were successfully processed,
@@ -71,13 +80,32 @@ class ArmCommands:
 
         """
 
+        # self.cloud_websocket = cloud_websocket
+
+        # Construct session path
+        self.curr_sess_path = self.storage.create_next_session_folder()
+
+        # Generate positions where pictures will be taken
+        steps = list(reversed(range(1600, 2000, 200)))
+
+        # Create new session at the Control Panel
+        self.arm_id = self.config["arm_id"]
+        self.session_id = os.path.basename(self.curr_sess_path)
+        requests.post(self.control_url + "api/sessions/", json={
+            "arm": self.arm_id,
+            "session_id": self.session_id,
+            "status": "In Progress",
+            "log_filenames": ",".join(reversed([str(step) for step in steps]))
+        })
+
         # Take pictures and send them for processing
-        results = self.take_pictures()
+        results = await self.take_pictures(steps)
         log_args = {"arm_id": self.arm_id, "session_id": self.session_id, "log_type": "comm_exec"}
         logger.info(f"All pictures taken and uploads started.", log_args)
 
         # Check if all of the pictures were processed successfully
-        all_success = all([res["res_status_code"][0] == 200 for res in results])
+        print(results)
+        all_success = all([res["success"] for res in results])
 
         # If all successful, send a request to process session images and generate commands
         if all_success:
@@ -108,10 +136,15 @@ class ArmCommands:
         log_args["session_finished"] = 1
         logger.info("Session completed!", log_args)
 
-    def take_pictures(self):
+    async def take_pictures(self, steps):
         """
         Takes pictures for inference. After the pictures are taken, they will be uploaded to s3 and an http request
         containing the URL of the images will be sent to sorterbot_cloud to start inference and locate objects of interest.
+
+        Parameters
+        ----------
+        steps : list of ints
+            List containing pulse widths of servo 0 where images should be taken.
 
         Returns
         -------
@@ -120,30 +153,11 @@ class ArmCommands:
 
         """
 
-        # Construct session path
-        self.curr_sess_path = self.storage.create_next_session_folder()
-
         # Init arm position for inference
-        self.sc.init_arm_position(is_inference=True)
-
-        # Upload files on separate threads so the arm's movement is not blocked until upload is complete
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=10)
-
-        # Generate positions where pictures will be taken
-        futures = []
-        steps = list(reversed(range(1000, 2000, 50)))
-
-        # Create new session at the Control Panel
-        self.arm_id = self.config["arm_id"]
-        self.session_id = os.path.basename(self.curr_sess_path)
-        add_sess_res = requests.post(self.control_url + "api/sessions/", json={
-            "arm": self.arm_id,
-            "session_id": self.session_id,
-            "status": "In Progress",
-            "log_filenames": ",".join(reversed([str(step) for step in steps]))
-        })
+        # self.sc.init_arm_position(is_inference=True)
 
         # Execute sequence
+        tasks = []
         for step in steps:
             log_args = {"arm_id": self.arm_id, "session_id": self.session_id, "log_type": step}
 
@@ -151,69 +165,87 @@ class ArmCommands:
             image_path = os.path.join(self.curr_sess_path, f"{step}.jpg")
 
             # Move arm to next position
-            self.sc.execute_commands([(0, step)])
+            # self.sc.execute_commands([(0, step)])
             logger.info(f"Arm is in position.", log_args)
 
-            # Wait a bit for stabilization
-            sleep(0.25)
+            # Wait a bit for stabilization (and upload previous results in the meantime)
+            await asyncio.sleep(0.25)
             logger.info(f"Arm is stabilized.", log_args)
 
             # Take the picture
             self.camera.take_picture(image_path)
             logger.info(f"Picture taken.", log_args)
 
-            # Upload it to S3 async
-            future = executor.submit(self.upload_and_process_img, image_path, step)
-            futures.append(future)
-            logger.info(f"Image upload to AWS s3 started.", log_args)
+            # Send picture directly to Cloud service
+            task = asyncio.create_task(self.send_image_for_processing(image_path, step))
+            tasks.append(task)
 
         results = []
-        for future in concurrent.futures.as_completed(futures):
-            status_code, step_threaded = future.result()
-            logger.info(
-                f"All images finished uploading, current image's upload finished with status code: {status_code}",
-                {"arm_id": self.arm_id, "session_id": self.session_id, "log_type": step_threaded}
-            )
+        for task in asyncio.as_completed(tasks):
+            success, step = await task
+            print(success)
+            print(step)
+            # logger.info(
+            #     f"All images finished uploading, current image's upload finished with status code: {status_code}",
+            #     {"arm_id": self.arm_id, "session_id": self.session_id, "log_type": step_threaded}
+            # )
             results.append({
                 "image_id": step,
-                "res_status_code": future.result()
+                "success": success
             })
-
-        # Wait until all images are processed
-        executor.shutdown(wait=True)
 
         return results
 
-    def upload_and_process_img(self, image_path, step):
+    async def send_image_for_processing(self, image_path, step):
         """
-        Takes an image from disk, uploads it to S3 and sends a request to the cloud service with the name of the image
-        to start the processing.
+        Takes an image from disk, opens it and send the image bytes directly to the Cloud service. It creates a new connection for each
+        image, where the image metadata is sent as headers of the initial HTTP handshake.
 
         Parameters
         ----------
         image_path : str
             Path of the image on disk to be uploaded and processed.
         step : int
-            Identifies the image, corresponds to the pulse width of servo0 where the image was taken. Used to correctly
+            Identifies the image, corresponds to the pulse width of servo 0 where the image was taken. Used to correctly
             place the log after upload was done.
 
         Returns
         -------
-        status_code : int
-            Status code of the response from the cloud service.
+        success : bool
+            Boolean representing if image processing was successful.
+        step : int
+            Identifies the image, corresponds to the pulse width of servo 0 where the image was taken. Used to correctly
+            place the log after upload was done. It is passed through the function and used to report the execution results.
 
         """
 
-        self.storage.upload_file("sorterbot", image_path, self.config["arm_id"])
-        params = {
-            "session_id": os.path.basename(self.curr_sess_path),
-            "image_name": os.path.basename(image_path),
-            "arm_id": self.config["arm_id"]
-        }
+        log_args = {"arm_id": self.arm_id, "session_id": self.session_id, "log_type": step}
 
-        status_code = requests.post(urljoin(self.cloud_url, "process_image"), params=params).status_code
+        # Read image bytes
+        with open(image_path, "rb") as img_file:
+            img_bytes = img_file.read()
 
-        return status_code, step
+        # Construct headers for initial HTTP handshake
+        headers = websockets.http.Headers({
+            "command": "recv_img",
+            "arm_id": self.arm_id,
+            "session_id": self.session_id,
+            "image_name": Path(image_path).name,
+            "image_size": len(img_bytes)
+        })
+
+        # Open connection with above headers and send image bytes
+        async with websockets.connect(self.ws_cloud_url, extra_headers=headers) as cloud_websocket:
+            await cloud_websocket.send(img_bytes)
+            logger.info(f"Image {Path(image_path).name} successfully sent to Cloud service.", log_args)
+            success = await cloud_websocket.recv()
+
+            # Delete file locally if successfully processed
+            if success:
+                logger.info(f"Image {Path(image_path).name} successfully processed.", log_args)
+                os.remove(image_path)
+
+            return success, step
 
     def get_commands_of_session(self):
         """

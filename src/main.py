@@ -25,9 +25,9 @@ class Main:
         self.heart_rate = heart_rate
         self.load_config()
         self.loop = asyncio.get_event_loop()
-        self.commands = ArmCommands()
         self.control_websocket = None
         self.cloud_websocket = None
+        self.commands = ArmCommands()
 
     async def heartbeat(self):
         """
@@ -106,9 +106,9 @@ class Main:
 
         """
 
-        cloud_url = f"ws://{cloud_host or self.config['cloud_host']}:{self.config['cloud_port']}"
+        self.cloud_url = f"ws://{cloud_host or self.config['cloud_host']}:{self.config['cloud_port']}"
         try:
-            self.cloud_websocket = await websockets.connect(cloud_url)
+            self.cloud_websocket = await websockets.connect(self.cloud_url)
             pong_waiter = await self.cloud_websocket.ping()
             await pong_waiter
             return 1
@@ -201,9 +201,12 @@ if __name__ == "__main__":
             print("Checking in...")
             should_start_session = main.loop.run_until_complete(main.heartbeat())
             print(f"session should start: {should_start_session}")
-            should_start_session = False
+            should_start_session = True
             if should_start_session:
-                # commands.infer_and_sort()
+                if main.cloud_websocket:
+                    main.loop.run_until_complete(main.commands.infer_and_sort(main.cloud_websocket))
+                else:
+                    raise Exception("WebSocket connection is closed!")
                 sleep(main.heart_rate)
             else:
                 sleep(main.heart_rate)
