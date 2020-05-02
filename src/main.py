@@ -204,7 +204,7 @@ if __name__ == "__main__":
             should_start_session = True
             if should_start_session:
                 if main.cloud_websocket:
-                    main.loop.run_until_complete(main.commands.infer_and_sort(main.cloud_websocket))
+                    main.loop.run_until_complete(main.commands.infer_and_sort())
                 else:
                     raise Exception("WebSocket connection is closed!")
                 sleep(main.heart_rate)

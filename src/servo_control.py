@@ -106,9 +106,9 @@ class ServoControl:
 
         """
 
-        height_offset = 200 if is_container else 0
+        height_offset = 300 if is_container else 0
 
-        servo_1_pos = end_pos[1]
+        servo_1_pos = end_pos[1] - height_offset / 2
         servo_2_pos = -7.83e-7 * servo_1_pos ** 3 + 5.26e-3 * servo_1_pos ** 2 - 10.3 * servo_1_pos + 7341 + height_offset
         servo_3_pos = 1.48e-6 * servo_1_pos ** 3 - 8.11e-3 * servo_1_pos ** 2 + 14.2 * servo_1_pos - 6634
 

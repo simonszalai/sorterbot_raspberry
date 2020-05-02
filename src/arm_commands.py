@@ -6,15 +6,11 @@ the servo motors, they are doing higher level operations which consists of serie
 
 
 import os
-import zlib
 import json
-import base64
 import asyncio
 import requests
 import websockets
 import concurrent.futures
-from multiprocessing import Pool
-from time import sleep
 from datetime import datetime
 from urllib.parse import urljoin
 from pathlib import Path
@@ -71,7 +67,7 @@ class ArmCommands:
         executor.submit(self.storage.upload_file, "sorterbot-training-videos", video_path)
         executor.submit(self.sc.init_arm_position)
 
-    async def infer_and_sort(self, cloud_websocket):
+    async def infer_and_sort(self):
         """
         Controls the process of localizing objects and moving them to the containers on the Raspberry side.
         First it takes images for inference, sends them for processing, and after all of them were successfully processed,
@@ -80,13 +76,11 @@ class ArmCommands:
 
         """
 
-        # self.cloud_websocket = cloud_websocket
-
         # Construct session path
         self.curr_sess_path = self.storage.create_next_session_folder()
 
         # Generate positions where pictures will be taken
-        steps = list(reversed(range(1600, 2000, 200)))
+        steps = list(reversed(range(1000, 2000, 200)))
 
         # Create new session at the Control Panel
         self.arm_id = self.config["arm_id"]
@@ -99,23 +93,23 @@ class ArmCommands:
         })
 
         # Take pictures and send them for processing
-        results = await self.take_pictures(steps)
+        all_success = await self.take_pictures(steps)
         log_args = {"arm_id": self.arm_id, "session_id": self.session_id, "log_type": "comm_exec"}
-        logger.info(f"All pictures taken and uploads started.", log_args)
-
-        # Check if all of the pictures were processed successfully
-        print(results)
-        all_success = all([res["success"] for res in results])
 
         # If all successful, send a request to process session images and generate commands
         if all_success:
-            commands_as_pw = self.get_commands_of_session()
-            logger.info(f"All pictures successfully uploaded.", log_args)
+            async with websockets.connect(self.ws_cloud_url) as cloud_websocket:
+                await cloud_websocket.send(json.dumps({
+                    "command": "get_commands_of_session",
+                    "session_id": Path(self.curr_sess_path).name,
+                    "arm_constants": self.config
+                }))
+                commands_as_pw = json.loads(await cloud_websocket.recv())
+            if len(commands_as_pw) == 0:
+                logger.warning("No containers were found, moving to initial position.", log_args)
         else:
             commands_as_pw = []
-            for res in results:
-                if res["res_status_code"] != 200:
-                    logger.error(f"Error while uploading image: {res}", log_args)
+            logger.error("At least one image failed processing, moving to initial position.", log_args)
 
         # Instruct arm to move each object to the appropriate containers
         for cmd in commands_as_pw:
@@ -138,8 +132,9 @@ class ArmCommands:
 
     async def take_pictures(self, steps):
         """
-        Takes pictures for inference. After the pictures are taken, they will be uploaded to s3 and an http request
-        containing the URL of the images will be sent to sorterbot_cloud to start inference and locate objects of interest.
+        Takes pictures for inference. After the pictures are taken, they will be sent over WebSockets to
+        Cloud service to start inference and locate objects of interest. This function will wait for all the images
+        to be processed, and finally it will check if all of them were successfully processed.
 
         Parameters
         ----------
@@ -148,13 +143,13 @@ class ArmCommands:
 
         Returns
         -------
-        results : list of ints
-            List of response status codes returned by the cloud service.
+        all_success : bool
+            Boolean indicating if all the images were successfully processed.
 
         """
 
         # Init arm position for inference
-        # self.sc.init_arm_position(is_inference=True)
+        self.sc.init_arm_position(is_inference=True)
 
         # Execute sequence
         tasks = []
@@ -165,16 +160,16 @@ class ArmCommands:
             image_path = os.path.join(self.curr_sess_path, f"{step}.jpg")
 
             # Move arm to next position
-            # self.sc.execute_commands([(0, step)])
-            logger.info(f"Arm is in position.", log_args)
+            self.sc.execute_commands([(0, step)])
+            logger.info(f"Arm is in position for picture '{step}'.", log_args)
 
             # Wait a bit for stabilization (and upload previous results in the meantime)
-            await asyncio.sleep(0.25)
+            await asyncio.sleep(0.5)
             logger.info(f"Arm is stabilized.", log_args)
 
             # Take the picture
             self.camera.take_picture(image_path)
-            logger.info(f"Picture taken.", log_args)
+            logger.info(f"Picture '{step}' taken.", log_args)
 
             # Send picture directly to Cloud service
             task = asyncio.create_task(self.send_image_for_processing(image_path, step))
@@ -183,18 +178,21 @@ class ArmCommands:
         results = []
         for task in asyncio.as_completed(tasks):
             success, step = await task
-            print(success)
-            print(step)
-            # logger.info(
-            #     f"All images finished uploading, current image's upload finished with status code: {status_code}",
-            #     {"arm_id": self.arm_id, "session_id": self.session_id, "log_type": step_threaded}
-            # )
             results.append({
                 "image_id": step,
                 "success": success
             })
 
-        return results
+        logger.info("All images successfully processed.", {"arm_id": self.arm_id, "session_id": self.session_id, "log_type": "comm_gen"})
+
+        # Check if all of the pictures were processed successfully
+        all_success = all([res["success"] for res in results])
+
+        if not all_success:
+            failed_images = [res["image_id"] for res in results if not res["success"]]
+            logger.error(f"Processing failed for the following images: {failed_images}", log_args)
+
+        return all_success
 
     async def send_image_for_processing(self, image_path, step):
         """
@@ -230,11 +228,10 @@ class ArmCommands:
             "command": "recv_img",
             "arm_id": self.arm_id,
             "session_id": self.session_id,
-            "image_name": Path(image_path).name,
-            "image_size": len(img_bytes)
+            "image_name": Path(image_path).name
         })
 
-        # Open connection with above headers and send image bytes
+        # Send image bytes
         async with websockets.connect(self.ws_cloud_url, extra_headers=headers) as cloud_websocket:
             await cloud_websocket.send(img_bytes)
             logger.info(f"Image {Path(image_path).name} successfully sent to Cloud service.", log_args)
@@ -246,30 +243,6 @@ class ArmCommands:
                 os.remove(image_path)
 
             return success, step
-
-    def get_commands_of_session(self):
-        """
-        Sends a request to the cloud service to process the session and generate commands. Should be sent only after every image in the session
-        has been successfully processed.
-
-        Returns
-        -------
-        commands : list
-            List of tuples of tuples, containing the commands that can be directly executed by the arm. The first tuple contains the position
-            of the item, the second contains the position of the container. Both of them contain the positions as polar coordinates, where the first
-            element is the angle and the second element is the distance. Units are converted to pulse widths, which can be directly executed by the arm.
-
-        """
-
-        params = {
-            "session_id": os.path.basename(self.curr_sess_path),
-        }
-        res = requests.post(urljoin(self.cloud_url, "get_commands_of_session"), params=params, json=self.config)
-
-        if res.status_code == 200:
-            return res.json()
-        else:
-            return []
 
     def reset_arm(self):
         """
