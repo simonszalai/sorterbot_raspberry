@@ -85,7 +85,7 @@ class Main:
                 await pong_waiter
                 control_connected = True
                 print("Control Panel is online.")
-            except (ConnectionRefusedError, websockets.exceptions.ConnectionClosedError):
+            except (ConnectionRefusedError, websockets.exceptions.ConnectionClosedError, websockets.exceptions.InvalidMessage):
                 print("Control Panel is offline. Retrying in 3s...")
                 sleep(self.heart_rate)
 
@@ -112,7 +112,7 @@ class Main:
             pong_waiter = await self.cloud_websocket.ping()
             await pong_waiter
             return 1
-        except (ConnectionRefusedError, websockets.exceptions.ConnectionClosedError):
+        except (ConnectionRefusedError, websockets.exceptions.ConnectionClosedError, websockets.exceptions.InvalidMessage):
             if cloud_host:
                 print("Cloud service is offline with latest host as well.")
             else:
@@ -136,7 +136,7 @@ class Main:
             await pong_waiter
             print("SorterBot Cloud is online.")
             return 1
-        except websockets.exceptions.ConnectionClosedError:
+        except (ConnectionRefusedError, websockets.exceptions.ConnectionClosedError, websockets.exceptions.InvalidMessage):
             print("WebSocket connection to SorterBot Cloud exists, but it is unresponsive, closing connection.")
             await self.cloud_websocket.close()
             self.cloud_websocket = None
@@ -201,7 +201,7 @@ if __name__ == "__main__":
             print("Checking in...")
             should_start_session = main.loop.run_until_complete(main.heartbeat())
             print(f"session should start: {should_start_session}")
-            should_start_session = True
+            # should_start_session = True
             if should_start_session:
                 if main.cloud_websocket:
                     main.loop.run_until_complete(main.commands.infer_and_sort())

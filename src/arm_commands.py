@@ -80,7 +80,7 @@ class ArmCommands:
         self.curr_sess_path = self.storage.create_next_session_folder()
 
         # Generate positions where pictures will be taken
-        steps = list(reversed(range(1000, 2000, 200)))
+        steps = list(reversed(range(1000, 2000, 50)))
 
         # Create new session at the Control Panel
         self.arm_id = self.config["arm_id"]
@@ -122,6 +122,17 @@ class ArmCommands:
             self.magnet.off()
             logger.info(f"Magnet OFF.", log_args)
 
+        # Take pictures and send them for after picture
+        all_success = await self.take_pictures(steps, is_after=True)
+
+        # Start stitching of after image
+        async with websockets.connect(self.ws_cloud_url) as cloud_websocket:
+            await cloud_websocket.send(json.dumps({
+                "command": "stitch_after_image",
+                "arm_id": self.config["arm_id"],
+                "session_id": Path(self.curr_sess_path).name
+            }))
+
         # Reset arm to initial position
         self.reset_arm()
         logger.info(f"Arm reset to initial position.", log_args)
@@ -130,7 +141,7 @@ class ArmCommands:
         log_args["session_finished"] = 1
         logger.info("Session completed!", log_args)
 
-    async def take_pictures(self, steps):
+    async def take_pictures(self, steps, is_after=False):
         """
         Takes pictures for inference. After the pictures are taken, they will be sent over WebSockets to
         Cloud service to start inference and locate objects of interest. This function will wait for all the images
@@ -145,6 +156,9 @@ class ArmCommands:
         -------
         all_success : bool
             Boolean indicating if all the images were successfully processed.
+        is_after : bool
+            Boolean representing is the current image recording session is for creating an overview stitched image after the objects have
+            been moved to the containers.
 
         """
 
@@ -157,7 +171,7 @@ class ArmCommands:
             log_args = {"arm_id": self.arm_id, "session_id": self.session_id, "log_type": step}
 
             # Construct image path
-            image_path = os.path.join(self.curr_sess_path, f"{step}.jpg")
+            image_path = Path(self.curr_sess_path).joinpath(f"{step}.jpg")
 
             # Move arm to next position
             self.sc.execute_commands([(0, step)])
@@ -168,11 +182,11 @@ class ArmCommands:
             logger.info(f"Arm is stabilized.", log_args)
 
             # Take the picture
-            self.camera.take_picture(image_path)
+            self.camera.take_picture(image_path.as_posix())
             logger.info(f"Picture '{step}' taken.", log_args)
 
             # Send picture directly to Cloud service
-            task = asyncio.create_task(self.send_image_for_processing(image_path, step))
+            task = asyncio.create_task(self.send_image_for_processing(image_path, step, is_after))
             tasks.append(task)
 
         results = []
@@ -194,7 +208,7 @@ class ArmCommands:
 
         return all_success
 
-    async def send_image_for_processing(self, image_path, step):
+    async def send_image_for_processing(self, image_path, step, is_after):
         """
         Takes an image from disk, opens it and send the image bytes directly to the Cloud service. It creates a new connection for each
         image, where the image metadata is sent as headers of the initial HTTP handshake.
@@ -206,6 +220,9 @@ class ArmCommands:
         step : int
             Identifies the image, corresponds to the pulse width of servo 0 where the image was taken. Used to correctly
             place the log after upload was done.
+        is_after : bool
+            Boolean representing is the current image recording session is for creating an overview stitched image after the objects have
+            been moved to the containers.
 
         Returns
         -------
@@ -225,7 +242,7 @@ class ArmCommands:
 
         # Construct headers for initial HTTP handshake
         headers = websockets.http.Headers({
-            "command": "recv_img",
+            "command": "recv_img_after" if is_after else "recv_img_proc",
             "arm_id": self.arm_id,
             "session_id": self.session_id,
             "image_name": Path(image_path).name
