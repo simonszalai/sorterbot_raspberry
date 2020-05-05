@@ -4,3 +4,4 @@ sessions
 arm_config.yaml
 *.h264
 *.pyc
+cert.pem

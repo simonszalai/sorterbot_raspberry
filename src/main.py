@@ -1,6 +1,8 @@
+# import ssl
 import json
 import asyncio
 import websockets
+# from pathlib import Path
 from time import sleep
 from yaml import load, dump, Loader, YAMLError
 
@@ -28,6 +30,10 @@ class Main:
         self.control_websocket = None
         self.cloud_websocket = None
         self.commands = ArmCommands()
+
+        # self.ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+        # localhost_pem = Path(__file__).parent.parent.joinpath("cert.pem")
+        # self.ssl_context.load_verify_locations(localhost_pem)
 
     async def heartbeat(self):
         """
