@@ -94,10 +94,12 @@ class ArmCommands:
 
         # Take pictures and send them for processing
         all_success = await self.take_pictures(steps)
+
         log_args = {"arm_id": self.arm_id, "session_id": self.session_id, "log_type": "comm_exec"}
 
         # If all successful, send a request to process session images and generate commands
         if all_success:
+            logger.info("All images successfully processed, requesting commands...", dict(bm_id=8, **log_args))
             async with websockets.connect(self.ws_cloud_url) as cloud_websocket:
                 await cloud_websocket.send(json.dumps({
                     "command": "get_commands_of_session",
@@ -105,6 +107,7 @@ class ArmCommands:
                     "arm_constants": self.config
                 }))
                 commands_as_pw = json.loads(await cloud_websocket.recv())
+                logger.info("Commands received.", dict(bm_id=17, **log_args))
             if len(commands_as_pw) == 0:
                 logger.warning("No containers were found, moving to initial position.", log_args)
         else:
@@ -122,8 +125,12 @@ class ArmCommands:
             self.magnet.off()
             logger.info(f"Magnet OFF.", log_args)
 
+        logger.info("Commands executed.", dict(bm_id=18, **log_args))
+
         # Take pictures and send them for after picture
         all_success = await self.take_pictures(steps, is_after=True)
+
+        logger.info("All after pictures taken and uploads started.", dict(bm_id=15, **log_args))
 
         # Start stitching of after image
         async with websockets.connect(self.ws_cloud_url) as cloud_websocket:
@@ -133,13 +140,11 @@ class ArmCommands:
                 "session_id": Path(self.curr_sess_path).name
             }))
 
+        logger.info("Stitching after images started.", dict(bm_id=16, **log_args))
+
         # Reset arm to initial position
         self.reset_arm()
-        logger.info(f"Arm reset to initial position.", log_args)
-
-        # Send final log os session
-        log_args["session_finished"] = 1
-        logger.info("Session completed!", log_args)
+        logger.info(f"Arm reset to initial position, session finished.", dict(session_finished=1, bm_id=25, **log_args))
 
     async def take_pictures(self, steps, is_after=False):
         """
@@ -183,7 +188,7 @@ class ArmCommands:
 
             # Take the picture
             self.camera.take_picture(image_path.as_posix())
-            logger.info(f"Picture '{step}' taken.", log_args)
+            logger.info(f"Picture '{step}' taken.", dict(bm_id=1, **log_args))
 
             # Send picture directly to Cloud service
             task = asyncio.create_task(self.send_image_for_processing(image_path, step, is_after))
@@ -192,6 +197,7 @@ class ArmCommands:
         results = []
         for task in asyncio.as_completed(tasks):
             success, step = await task
+            print("step", step)
             results.append({
                 "image_id": step,
                 "success": success
