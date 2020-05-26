@@ -2,6 +2,7 @@
 recordings
 sessions
 arm_config.yaml
+arm_config_dev.yaml
 *.h264
 *.pyc
 cert.pem

@@ -1,17 +1,27 @@
 import logging
 import logging.handlers
+from yaml import load, Loader, YAMLError
 
-logger = logging.getLogger('SORTERBOT_RASPBERRY')
 
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+class Logger:
+    def __init__(self, config_path):
+        with open(config_path, 'r') as stream:
+            try:
+                config = load(stream, Loader)
+            except YAMLError as error:
+                print("Error while opening config.yaml ", error)
 
-handler = logging.StreamHandler()
-handler.setFormatter(formatter)
-logger.addHandler(handler)
+        self.logger = logging.getLogger('SORTERBOT_RASPBERRY')
 
-http_handler = logging.handlers.HTTPHandler('192.168.178.19:8000', '/log/', method='POST')
-handler.setFormatter(formatter)
-logger.addHandler(http_handler)
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-logger.setLevel(logging.DEBUG)
-logger.setLevel(level=logging.DEBUG)
+        handler = logging.StreamHandler()
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
+
+        http_handler = logging.handlers.HTTPHandler(f"{config['control_host']}:{config['control_port']}", '/log/', method='POST')
+        handler.setFormatter(formatter)
+        self.logger.addHandler(http_handler)
+
+        self.logger.setLevel(logging.DEBUG)
+        self.logger.setLevel(level=logging.DEBUG)

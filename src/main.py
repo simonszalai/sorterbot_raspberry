@@ -5,6 +5,7 @@ import websockets
 # from pathlib import Path
 from time import sleep
 from yaml import load, dump, Loader, YAMLError
+from concurrent.futures import TimeoutError as ConnectionTimeoutError
 
 from arm_commands import ArmCommands
 
@@ -20,16 +21,19 @@ class Main:
     ----------
     heart_rate : int
         Length of interval in seconds in which the connection checks and status reports are executed.
+    is_dev : bool
+        Controls whether the development or production config file should be loaded.
 
     """
 
-    def __init__(self, heart_rate=3):
+    def __init__(self, heart_rate=3, is_dev=True):
         self.heart_rate = heart_rate
+        self.config_path = f"arm_config{'_dev' if is_dev else ''}.yaml"
         self.load_config()
         self.loop = asyncio.get_event_loop()
         self.control_websocket = None
         self.cloud_websocket = None
-        self.commands = ArmCommands()
+        self.commands = ArmCommands(self.config_path)
 
         # self.ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
         # localhost_pem = Path(__file__).parent.parent.joinpath("cert.pem")
@@ -53,27 +57,31 @@ class Main:
 
         """
 
-        cloud_conn_status = 0
+        try:
+            cloud_conn_status = 0
 
-        if self.cloud_websocket and self.cloud_websocket.open:
-            # If Cloud connection is open, try to ping it
-            cloud_conn_status = await self.ping_cloud()
-        else:
-            # If Cloud connection is closed, open it
-            success_connecting = await self.connect_cloud()
-            if not success_connecting:
-                # If openin connection was not successful, retreive the latest host address from Control Panel and try to connect with that
-                cloud_conn_status = await self.get_cloud_host_and_connect()
+            if self.cloud_websocket and self.cloud_websocket.open:
+                # If Cloud connection is open, try to ping it
+                cloud_conn_status = await self.ping_cloud()
+            else:
+                # If Cloud connection is closed, open it
+                success_connecting = await self.connect_cloud()
+                if not success_connecting:
+                    # If openin connection was not successful, retreive the latest host address from Control Panel and try to connect with that
+                    cloud_conn_status = await self.get_cloud_host_and_connect()
 
-        # Report back to Control Panel if connecting to the Cloud Service was successful and see if a new session should be started
-        await self.control_websocket.send(json.dumps({
-            "command": "send_conn_status",
-            "arm_id": self.config["arm_id"],
-            "cloud_conn_status": cloud_conn_status
-        }))
-        should_start_session = json.loads(await self.control_websocket.recv())
+            # Report back to Control Panel if connecting to the Cloud Service was successful and see if a new session should be started
+            await self.control_websocket.send(json.dumps({
+                "command": "send_conn_status",
+                "arm_id": self.config["arm_id"],
+                "cloud_conn_status": cloud_conn_status
+            }))
+            should_start_session = json.loads(await self.control_websocket.recv())
 
-        return should_start_session
+            return should_start_session
+        except websockets.exceptions.ConnectionClosedError:
+            print("WebSockets connection closed.")
+            return 0
 
     async def connect_control(self):
         """
@@ -91,7 +99,13 @@ class Main:
                 await pong_waiter
                 control_connected = True
                 print("Control Panel is online.")
-            except (ConnectionRefusedError, websockets.exceptions.ConnectionClosedError, websockets.exceptions.InvalidMessage):
+            except (
+                ConnectionRefusedError,
+                websockets.exceptions.ConnectionClosedError,
+                websockets.exceptions.InvalidMessage,
+                websockets.exceptions.InvalidStatusCode
+            ) as e:
+                print(e)
                 print("Control Panel is offline. Retrying in 3s...")
                 sleep(self.heart_rate)
 
@@ -114,11 +128,16 @@ class Main:
 
         self.cloud_url = f"ws://{cloud_host or self.config['cloud_host']}:{self.config['cloud_port']}"
         try:
-            self.cloud_websocket = await websockets.connect(self.cloud_url)
+            self.cloud_websocket = await asyncio.wait_for(websockets.connect(self.cloud_url), 1)
             pong_waiter = await self.cloud_websocket.ping()
             await pong_waiter
             return 1
-        except (ConnectionRefusedError, websockets.exceptions.ConnectionClosedError, websockets.exceptions.InvalidMessage):
+        except (
+                ConnectionRefusedError,
+                websockets.exceptions.ConnectionClosedError,
+                websockets.exceptions.InvalidMessage,
+                ConnectionTimeoutError
+        ):
             if cloud_host:
                 print("Cloud service is offline with latest host as well.")
             else:
@@ -174,7 +193,7 @@ class Main:
         if connected_to_new_host:
             # if connection was successful, save new host to config
             self.config["cloud_host"] = new_cloud_host
-            with open("arm_config.yaml", "w") as outfile:
+            with open(self.config_path, "w") as outfile:
                 dump(self.config, outfile, default_flow_style=False)
             # Reload config file to memory here, as this is the only place where it can be changed programmatically
             self.load_config()
@@ -188,7 +207,7 @@ class Main:
 
         """
 
-        with open("arm_config.yaml", 'r') as stream:
+        with open(self.config_path, 'r') as stream:
             try:
                 self.config = load(stream, Loader)
             except YAMLError as error:
@@ -207,7 +226,7 @@ if __name__ == "__main__":
             print("Checking in...")
             should_start_session = main.loop.run_until_complete(main.heartbeat())
             print(f"session should start: {should_start_session}")
-            # should_start_session = True
+            should_start_session = True
             if should_start_session:
                 if main.cloud_websocket:
                     main.loop.run_until_complete(main.commands.infer_and_sort())
