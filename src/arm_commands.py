@@ -83,19 +83,19 @@ class ArmCommands:
 
         """
 
-        def on_error(ws, error):
-            print(error)
+        # def on_error(ws, error):
+        #     print(error)
 
-        def on_close():
-            print("WS close")
+        # def on_close():
+        #     print("WS close")
 
-        def on_open():
-            print("WS open")
+        # def on_open():
+        #     print("WS open")
 
         # Initiate WebSockets connection to Cloud service
         # cloud_websocket = websocket.create_connection(self.ws_cloud_url, on_error=on_error, on_close=on_close, on_open=on_open)
 
-        cloud_websocket = websocket.WebSocketApp(self.ws_cloud_url, on_error=on_error, on_close=on_close, on_open=on_open)
+        # cloud_websocket = websocket.WebSocketApp(self.ws_cloud_url, on_error=on_error, on_close=on_close, on_open=on_open)
         # ws.on_open = on_open
         # cloud_websocket.run_forever()
 
@@ -103,7 +103,7 @@ class ArmCommands:
         self.curr_sess_path = self.storage.create_next_session_folder()
 
         # Generate positions where pictures will be taken
-        steps = list(reversed(range(1000, 2000, 1000)))
+        steps = list(reversed(range(1000, 2000, 200)))
 
         # Create new session at the Control Panel
         self.arm_id = self.config["arm_id"]
@@ -117,21 +117,22 @@ class ArmCommands:
         self.session_id = res_json["new_session_id"]
 
         # Take pictures and send them for processing
-        all_success = self.take_pictures(cloud_websocket, steps)
-        print("all_success", all_success)
+        all_success = self.take_pictures(steps)
         log_args = {"arm_id": self.arm_id, "session_id": self.session_id, "log_type": "comm_exec"}
 
         # If all successful, send a request to process session images and generate commands
         if all_success:
             self.logger.info("All images successfully processed, requesting commands...", dict(bm_id=8, **log_args))
+            cloud_websocket = websocket.create_connection(self.ws_cloud_url)
             cloud_websocket.send(json.dumps({
                 "command": "get_commands_of_session",
-                "session_id": Path(self.curr_sess_path).name,
+                "session_id": self.session_id,
                 "arm_constants": self.config
             }))
             commands_as_pw = cloud_websocket.recv()
             commands_as_pw = json.loads(commands_as_pw)
             self.logger.info("Commands received.", dict(bm_id=17, **log_args))
+            cloud_websocket.close()
 
             if len(commands_as_pw) == 0:
                 self.logger.warning("No containers were found, moving to initial position.", log_args)
@@ -152,25 +153,28 @@ class ArmCommands:
 
         self.logger.info("Commands executed.", dict(bm_id=18, **log_args))
 
-        # Take pictures and send them for after picture
-        all_success = self.take_pictures(cloud_websocket, steps, is_after=True)
+        if False:
+            # Take pictures and send them for after picture
+            all_success = self.take_pictures(steps, is_after=True)
 
-        self.logger.info("All after pictures taken and uploads started.", dict(bm_id=15, **log_args))
+            self.logger.info("All after pictures taken and uploads started.", dict(bm_id=15, **log_args))
 
-        # Start stitching of after image
-        cloud_websocket.send(json.dumps({
-            "command": "stitch_after_image",
-            "arm_id": self.config["arm_id"],
-            "session_id": Path(self.curr_sess_path).name
-        }))
+            # Start stitching of after image
+            cloud_websocket = websocket.create_connection(self.ws_cloud_url)
+            cloud_websocket.send(json.dumps({
+                "command": "stitch_after_image",
+                "arm_id": self.config["arm_id"],
+                "session_id": self.session_id
+            }))
+            cloud_websocket.close()
 
-        self.logger.info("Stitching after images started.", dict(bm_id=16, **log_args))
+            self.logger.info("Stitching after images started.", dict(bm_id=16, **log_args))
 
         # Reset arm to initial position
         self.reset_arm()
         self.logger.info(f"Arm reset to initial position, session finished.", dict(session_finished=1, bm_id=25, **log_args))
 
-    def take_pictures(self, cloud_websocket, steps, is_after=False):
+    def take_pictures(self, steps, is_after=False):
         """
         Takes pictures for inference. After the pictures are taken, they will be sent over WebSockets to
         Cloud service to start inference and locate objects of interest. This function will wait for all the images
@@ -215,9 +219,9 @@ class ArmCommands:
                 self.camera.take_picture(image_path.as_posix())
                 self.logger.info(f"Picture '{step}' taken.", dict(bm_id=1, **log_args))
 
-            # Send picture directly to Cloud service
-            future = executor.submit(self.send_image_for_processing, cloud_websocket, image_path, step, is_after)
-            futures.append(future)
+                # Send picture directly to Cloud service
+                future = executor.submit(self.send_image_for_processing, image_path, step, is_after)
+                futures.append(future)
 
         results = []
         # for task in asyncio.as_completed(tasks):
@@ -246,7 +250,7 @@ class ArmCommands:
 
         return all_success
 
-    def send_image_for_processing(self, cloud_websocket, image_path, step, is_after):
+    def send_image_for_processing(self, image_path, step, is_after):
         """
         Takes an image from disk, opens it and send the image bytes directly to the Cloud service. It creates a new connection for each
         image, where the image metadata is sent as headers of the initial HTTP handshake.
@@ -280,6 +284,7 @@ class ArmCommands:
         with open(image_path, "rb") as img_file:
             img_bytes = img_file.read()
         self.logger.info(f"Bytes read", dict(bm_id=1.2, **log_args))
+
         # Construct headers for initial HTTP handshake
         headers = json.dumps({
             "command": "recv_img_after" if is_after else "recv_img_proc",
@@ -288,13 +293,19 @@ class ArmCommands:
             "image_name": Path(image_path).name
         }).encode('utf8')
 
+        cloud_websocket = websocket.create_connection(self.ws_cloud_url)
+
         # Send image bytes
         self.logger.info(f"Connection made", dict(bm_id=1.3, **log_args))
-        cloud_websocket.send(b"___".join([headers, img_bytes]))
+
+        cloud_websocket.send_binary(b"___SPLIT___".join([headers, img_bytes]))
+
         self.logger.info(f"Bytes sent", dict(bm_id=1.4, **log_args))
         self.logger.info(f"Image {Path(image_path).name} successfully sent to Cloud service.", log_args)
         success = cloud_websocket.recv()
         self.logger.info(f"Answer received", dict(bm_id=1.5, **log_args))
+
+        cloud_websocket.close()
 
         # Delete file locally if successfully processed
         if success:

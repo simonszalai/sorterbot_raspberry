@@ -1,6 +1,8 @@
 # import ssl
 import json
 import asyncio
+import socket
+import websocket
 import websockets
 # from pathlib import Path
 from time import sleep
@@ -26,13 +28,12 @@ class Main:
 
     """
 
-    def __init__(self, heart_rate=3, is_dev=True):
+    def __init__(self, heart_rate=3, is_dev=False):
         self.heart_rate = heart_rate
         self.config_path = f"arm_config{'_dev' if is_dev else ''}.yaml"
         self.load_config()
         self.loop = asyncio.get_event_loop()
         self.control_websocket = None
-        self.cloud_websocket = None
         self.commands = ArmCommands(self.config_path)
 
         # self.ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
@@ -58,17 +59,27 @@ class Main:
         """
 
         try:
-            cloud_conn_status = 0
+            cloud_conn_status = self.connect_cloud()
 
-            if self.cloud_websocket and self.cloud_websocket.open:
-                # If Cloud connection is open, try to ping it
-                cloud_conn_status = await self.ping_cloud()
-            else:
-                # If Cloud connection is closed, open it
-                success_connecting = await self.connect_cloud()
-                if not success_connecting:
-                    # If openin connection was not successful, retreive the latest host address from Control Panel and try to connect with that
-                    cloud_conn_status = await self.get_cloud_host_and_connect()
+            if not cloud_conn_status:
+                cloud_conn_status = await self.get_cloud_host_and_connect()
+
+            # try:
+            #     # Try to ping Cloud websocket connection
+            #     cloud_websocket.ping()
+            # except ConnectionRefusedError:
+                # Connection is closed, retrieve host from Control Panel and try again
+
+
+            # if self.cloud_websocket and self.cloud_websocket.open:
+            #     # If Cloud connection is open, try to ping it
+            #     cloud_conn_status = await self.ping_cloud()
+            # else:
+            #     # If Cloud connection is closed, open it
+            #     success_connecting = await self.connect_cloud()
+            #     if not success_connecting:
+            #         # If openin connection was not successful, retreive the latest host address from Control Panel and try to connect with that
+            #         cloud_conn_status = await self.get_cloud_host_and_connect()
 
             # Report back to Control Panel if connecting to the Cloud Service was successful and see if a new session should be started
             await self.control_websocket.send(json.dumps({
@@ -101,6 +112,7 @@ class Main:
                 print("Control Panel is online.")
             except (
                 ConnectionRefusedError,
+                TimeoutError,
                 websockets.exceptions.ConnectionClosedError,
                 websockets.exceptions.InvalidMessage,
                 websockets.exceptions.InvalidStatusCode
@@ -109,7 +121,7 @@ class Main:
                 print("Control Panel is offline. Retrying in 3s...")
                 sleep(self.heart_rate)
 
-    async def connect_cloud(self, cloud_host=None):
+    def connect_cloud(self, cloud_host=None):
         """
         Opens a WebSockets connection to the Cloud service.
 
@@ -125,18 +137,23 @@ class Main:
             instead of bool, because they are directly JSON serializable.
 
         """
-
+        print("cloud_host", cloud_host)
         self.cloud_url = f"ws://{cloud_host or self.config['cloud_host']}:{self.config['cloud_port']}"
+
         try:
-            self.cloud_websocket = await asyncio.wait_for(websockets.connect(self.cloud_url), 1)
-            pong_waiter = await self.cloud_websocket.ping()
-            await pong_waiter
+            cloud_websocket = websocket.create_connection(self.cloud_url, timeout=1)
+            cloud_websocket.ping()
+            cloud_websocket.close()
+            # self.cloud_websocket = await asyncio.wait_for(websockets.connect(self.cloud_url), 1)
+            # pong_waiter = await self.cloud_websocket.ping()
+            # await pong_waiter
             return 1
         except (
                 ConnectionRefusedError,
-                websockets.exceptions.ConnectionClosedError,
-                websockets.exceptions.InvalidMessage,
-                ConnectionTimeoutError
+                TimeoutError,
+                ConnectionResetError,
+                socket.timeout,
+                websocket._exceptions.WebSocketConnectionClosedException
         ):
             if cloud_host:
                 print("Cloud service is offline with latest host as well.")
@@ -144,28 +161,28 @@ class Main:
                 print("Cloud service is offline.")
             return 0
 
-    async def ping_cloud(self):
-        """
-        Pings to WebSockets connection to the Cloud service. If the ping fails, closes the connection.
+    # async def ping_cloud(self):
+    #     """
+    #     Pings to WebSockets connection to the Cloud service. If the ping fails, closes the connection.
 
-        Returns
-        -------
-        connection_success : int
-            0 or 1, representing if pinging the Cloud service succeeded. Integer values are used
-            instead of bool, because they are directly JSON serializable.
+    #     Returns
+    #     -------
+    #     connection_success : int
+    #         0 or 1, representing if pinging the Cloud service succeeded. Integer values are used
+    #         instead of bool, because they are directly JSON serializable.
 
-        """
+    #     """
 
-        try:
-            pong_waiter = await self.cloud_websocket.ping()
-            await pong_waiter
-            print("SorterBot Cloud is online.")
-            return 1
-        except (ConnectionRefusedError, websockets.exceptions.ConnectionClosedError, websockets.exceptions.InvalidMessage):
-            print("WebSocket connection to SorterBot Cloud exists, but it is unresponsive, closing connection.")
-            await self.cloud_websocket.close()
-            self.cloud_websocket = None
-            return 0
+    #     try:
+    #         pong_waiter = await self.cloud_websocket.ping()
+    #         await pong_waiter
+    #         print("SorterBot Cloud is online.")
+    #         return 1
+    #     except (ConnectionRefusedError, websockets.exceptions.ConnectionClosedError, websockets.exceptions.InvalidMessage):
+    #         print("WebSocket connection to SorterBot Cloud exists, but it is unresponsive, closing connection.")
+    #         await self.cloud_websocket.close()
+    #         self.cloud_websocket = None
+    #         return 0
 
     async def get_cloud_host_and_connect(self):
         """
@@ -188,7 +205,7 @@ class Main:
         new_cloud_host = json.loads(await self.control_websocket.recv())
 
         # Try to connect to Cloud service with the new host
-        connected_to_new_host = await self.connect_cloud(cloud_host=new_cloud_host)
+        connected_to_new_host = self.connect_cloud(cloud_host=new_cloud_host)
 
         if connected_to_new_host:
             # if connection was successful, save new host to config
@@ -226,16 +243,12 @@ if __name__ == "__main__":
             print("Checking in...")
             should_start_session = main.loop.run_until_complete(main.heartbeat())
             print(f"session should start: {should_start_session}")
-            should_start_session = True
+            # should_start_session = True
             if should_start_session:
-                if main.cloud_websocket:
-                    main.loop.run_until_complete(main.commands.infer_and_sort())
-                else:
-                    raise Exception("WebSocket connection is closed!")
+                main.commands.infer_and_sort()
                 sleep(main.heart_rate)
             else:
                 sleep(main.heart_rate)
     except KeyboardInterrupt:
         main.loop.run_until_complete(main.control_websocket.close())
-        main.loop.run_until_complete(main.cloud_websocket.close())
-        print("WebSocket connections to Cloud service and Control Panel closed.")
+        print("WebSocket connection to Control Panel closed.")
