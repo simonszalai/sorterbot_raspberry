@@ -1,0 +1,586 @@
+
+
+<!DOCTYPE html>
+<!--[if IE 8]><html class="no-js lt-ie9" lang="en" > <![endif]-->
+<!--[if gt IE 8]><!--> <html class="no-js" lang="en" > <!--<![endif]-->
+<head>
+  <meta charset="utf-8">
+  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <title>SorterBot Cloud Documentation &mdash; SorterBot Raspberry  documentation</title>
+  
+
+  
+  
+  
+  
+
+  
+  <script type="text/javascript" src="static/js/modernizr.min.js"></script>
+  
+    
+      <script type="text/javascript" id="documentation_options" data-url_root="./" src="static/documentation_options.js"></script>
+        <script src="static/jquery.js"></script>
+        <script src="static/underscore.js"></script>
+        <script src="static/doctools.js"></script>
+        <script src="static/language_data.js"></script>
+    
+    <script type="text/javascript" src="static/js/theme.js"></script>
+
+    
+
+  
+  <link rel="stylesheet" href="static/css/theme.css" type="text/css" />
+  <link rel="stylesheet" href="static/pygments.css" type="text/css" />
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" /> 
+</head>
+
+<body class="wy-body-for-nav">
+
+   
+  <div class="wy-grid-for-nav">
+    
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+          
+
+          
+            <a href="#" class="icon icon-home"> SorterBot Raspberry
+          
+
+          
+          </a>
+
+          
+            
+            
+          
+
+          
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+
+          
+        </div>
+
+        <div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="main navigation">
+          
+            
+            
+              
+            
+            
+              <!-- Local TOC -->
+              <div class="local-toc"><ul>
+<li><a class="reference internal" href="#">SorterBot Cloud Documentation</a></li>
+<li><a class="reference internal" href="#module-arm_commands">arm_commands module</a></li>
+<li><a class="reference internal" href="#module-camera">camera module</a></li>
+<li><a class="reference internal" href="#module-logger">logger module</a></li>
+<li><a class="reference internal" href="#module-magnet">magnet module</a></li>
+<li><a class="reference internal" href="#module-main">main module</a></li>
+<li><a class="reference internal" href="#module-servo_control">servo_control module</a></li>
+<li><a class="reference internal" href="#module-storage">storage module</a></li>
+<li><a class="reference internal" href="#indices-and-tables">Indices and tables</a></li>
+</ul>
+</div>
+            
+          
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap">
+
+      
+      <nav class="wy-nav-top" aria-label="top navigation">
+        
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="#">SorterBot Raspberry</a>
+        
+      </nav>
+
+
+      <div class="wy-nav-content">
+        
+        <div class="rst-content">
+        
+          
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<div role="navigation" aria-label="breadcrumbs navigation">
+
+  <ul class="wy-breadcrumbs">
+    
+      <li><a href="#">Docs</a> &raquo;</li>
+        
+      <li>SorterBot Cloud Documentation</li>
+    
+    
+      <li class="wy-breadcrumbs-aside">
+        
+            
+            <a href="sources/index.rst.txt" rel="nofollow"> View page source</a>
+          
+        
+      </li>
+    
+  </ul>
+
+  
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+            
+  <div class="section" id="sorterbot-cloud-documentation">
+<h1>SorterBot Cloud Documentation<a class="headerlink" href="#sorterbot-cloud-documentation" title="Permalink to this headline">¶</a></h1>
+<div class="toctree-wrapper compound">
+</div>
+</div>
+<div class="section" id="module-arm_commands">
+<span id="arm-commands-module"></span><h1>arm_commands module<a class="headerlink" href="#module-arm_commands" title="Permalink to this headline">¶</a></h1>
+<p>Contains the higher level commands that control the robotic arm. These commands are not directly controlling
+the servo motors, they are doing higher level operations which consists of series of lower level steps.</p>
+<dl class="py class">
+<dt id="arm_commands.ArmCommands">
+<em class="property">class </em><code class="sig-prename descclassname">arm_commands.</code><code class="sig-name descname">ArmCommands</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">config_path</span></em><span class="sig-paren">)</span><a class="headerlink" href="#arm_commands.ArmCommands" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt id="arm_commands.ArmCommands.close">
+<code class="sig-name descname">close</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#arm_commands.ArmCommands.close" title="Permalink to this definition">¶</a></dt>
+<dd><p>Closes the session: stops the camera in case it’s recording, moves the arm to starting position and neutralizes the servos.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="arm_commands.ArmCommands.infer_and_sort">
+<code class="sig-name descname">infer_and_sort</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#arm_commands.ArmCommands.infer_and_sort" title="Permalink to this definition">¶</a></dt>
+<dd><p>Controls the process of localizing objects and moving them to the containers on the Raspberry side.
+First it takes images for inference, sends them for processing, and after all of them were successfully processed,
+requests the session’s commands from the cloud service. After the commands are received, executes them one by one
+and returns the arm to the initial position.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="arm_commands.ArmCommands.record_training_video">
+<code class="sig-name descname">record_training_video</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#arm_commands.ArmCommands.record_training_video" title="Permalink to this definition">¶</a></dt>
+<dd><p>Records a video which later can be used to create a training dataset by utilizing sorterbot_labeltool. After the video
+is recorded, it will be uploaded to the appropriate s3 bucket.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="arm_commands.ArmCommands.reset_arm">
+<code class="sig-name descname">reset_arm</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#arm_commands.ArmCommands.reset_arm" title="Permalink to this definition">¶</a></dt>
+<dd><p>Instructs the arm to return to the start position.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="arm_commands.ArmCommands.send_image_for_processing">
+<code class="sig-name descname">send_image_for_processing</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">image_path</span></em>, <em class="sig-param"><span class="n">step</span></em>, <em class="sig-param"><span class="n">is_after</span></em><span class="sig-paren">)</span><a class="headerlink" href="#arm_commands.ArmCommands.send_image_for_processing" title="Permalink to this definition">¶</a></dt>
+<dd><p>Takes an image from disk, opens it and send the image bytes directly to the Cloud service. It creates a new connection for each
+image, where the image metadata is sent as headers of the initial HTTP handshake.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>image_path</strong> (<em>str</em>) – Path of the image on disk to be uploaded and processed.</p></li>
+<li><p><strong>step</strong> (<em>int</em>) – Identifies the image, corresponds to the pulse width of servo 0 where the image was taken. Used to correctly
+place the log after upload was done.</p></li>
+<li><p><strong>is_after</strong> (<em>bool</em>) – Boolean representing is the current image recording session is for creating an overview stitched image after the objects have
+been moved to the containers.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>success</strong> (<em>bool</em>) – Boolean representing if image processing was successful.</p></li>
+<li><p><strong>step</strong> (<em>int</em>) – Identifies the image, corresponds to the pulse width of servo 0 where the image was taken. Used to correctly
+place the log after upload was done. It is passed through the function and used to report the execution results.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="arm_commands.ArmCommands.take_pictures">
+<code class="sig-name descname">take_pictures</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">steps</span></em>, <em class="sig-param"><span class="n">is_after</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#arm_commands.ArmCommands.take_pictures" title="Permalink to this definition">¶</a></dt>
+<dd><p>Takes pictures for inference. After the pictures are taken, they will be sent over WebSockets to
+Cloud service to start inference and locate objects of interest. This function will wait for all the images
+to be processed, and finally it will check if all of them were successfully processed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>steps</strong> (<em>list of ints</em>) – List containing pulse widths of servo 0 where images should be taken.</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>all_success</strong> (<em>bool</em>) – Boolean indicating if all the images were successfully processed.</p></li>
+<li><p><strong>is_after</strong> (<em>bool</em>) – Boolean representing is the current image recording session is for creating an overview stitched image after the objects have
+been moved to the containers.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-camera">
+<span id="camera-module"></span><h1>camera module<a class="headerlink" href="#module-camera" title="Permalink to this headline">¶</a></h1>
+<p>This module controls the Raspberry Pi’s camera, which is used to make training videos
+and take inference pictures.</p>
+<dl class="py class">
+<dt id="camera.Camera">
+<em class="property">class </em><code class="sig-prename descclassname">camera.</code><code class="sig-name descname">Camera</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">resolution</span><span class="o">=</span><span class="default_value">1640, 1232</span></em>, <em class="sig-param"><span class="n">framerate</span><span class="o">=</span><span class="default_value">30</span></em><span class="sig-paren">)</span><a class="headerlink" href="#camera.Camera" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt id="camera.Camera.start">
+<code class="sig-name descname">start</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">path</span></em><span class="sig-paren">)</span><a class="headerlink" href="#camera.Camera.start" title="Permalink to this definition">¶</a></dt>
+<dd><p>Start video recording.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="camera.Camera.stop">
+<code class="sig-name descname">stop</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#camera.Camera.stop" title="Permalink to this definition">¶</a></dt>
+<dd><p>Stop video recording.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="camera.Camera.take_picture">
+<code class="sig-name descname">take_picture</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">path</span></em><span class="sig-paren">)</span><a class="headerlink" href="#camera.Camera.take_picture" title="Permalink to this definition">¶</a></dt>
+<dd><p>Take inference picture and save it to disk.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>path</strong> (<em>str</em>) – Path where the taken image should be saved.</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-logger">
+<span id="logger-module"></span><h1>logger module<a class="headerlink" href="#module-logger" title="Permalink to this headline">¶</a></h1>
+<dl class="py class">
+<dt id="logger.Logger">
+<em class="property">class </em><code class="sig-prename descclassname">logger.</code><code class="sig-name descname">Logger</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">config_path</span></em><span class="sig-paren">)</span><a class="headerlink" href="#logger.Logger" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+</dd></dl>
+
+</div>
+<div class="section" id="module-magnet">
+<span id="magnet-module"></span><h1>magnet module<a class="headerlink" href="#module-magnet" title="Permalink to this headline">¶</a></h1>
+<p>This module controls the magnet on the robotic arm which is used to pick up objects.
+I Grove Electromagnet is used, which has it’s own control electronic and can be turned
+on and off by supplying a logical high and logical low signal to the appropriate input.</p>
+<dl class="py class">
+<dt id="magnet.MagnetControl">
+<em class="property">class </em><code class="sig-prename descclassname">magnet.</code><code class="sig-name descname">MagnetControl</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">pin</span><span class="o">=</span><span class="default_value">23</span></em><span class="sig-paren">)</span><a class="headerlink" href="#magnet.MagnetControl" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt id="magnet.MagnetControl.off">
+<code class="sig-name descname">off</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#magnet.MagnetControl.off" title="Permalink to this definition">¶</a></dt>
+<dd><p>Turns the magnet off.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="magnet.MagnetControl.on">
+<code class="sig-name descname">on</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#magnet.MagnetControl.on" title="Permalink to this definition">¶</a></dt>
+<dd><p>Turns the magnet on.</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-main">
+<span id="main-module"></span><h1>main module<a class="headerlink" href="#module-main" title="Permalink to this headline">¶</a></h1>
+<dl class="py class">
+<dt id="main.Main">
+<em class="property">class </em><code class="sig-prename descclassname">main.</code><code class="sig-name descname">Main</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">heart_rate</span><span class="o">=</span><span class="default_value">3</span></em>, <em class="sig-param"><span class="n">is_dev</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#main.Main" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Manages WebSocket connections to Cloud service and Control Panel and starts new sessions as instructions from the user arrives
+from the Control Panel. The connections are opened when this file is run and periodically checked with pings if they are still working.
+If a connection is not responding, it is automatically closed and reopened. If the WebSocket server is down, the client will try to
+reconnect periodically. At the end of every heartbeat, connection status is reported to the Control Panel.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>heart_rate</strong> (<em>int</em>) – Length of interval in seconds in which the connection checks and status reports are executed.</p></li>
+<li><p><strong>is_dev</strong> (<em>bool</em>) – Controls whether the development or production config file should be loaded.</p></li>
+</ul>
+</dd>
+</dl>
+<dl class="py method">
+<dt id="main.Main.connect_cloud">
+<code class="sig-name descname">connect_cloud</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">cloud_host</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#main.Main.connect_cloud" title="Permalink to this definition">¶</a></dt>
+<dd><p>Opens a WebSockets connection to the Cloud service.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>cloud_host</strong> (<em>str</em>) – Optional parameter to specify the host of the connection. If none is provided, the host saved to the config file will be used.</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>connection_success</strong> – 0 or 1, representing if connecting to the Cloud service succeeded. Integer values are used
+instead of bool, because they are directly JSON serializable.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="main.Main.connect_control">
+<em class="property">async </em><code class="sig-name descname">connect_control</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#main.Main.connect_control" title="Permalink to this definition">¶</a></dt>
+<dd><p>Opens a WebSockets connection to the Control Panel using the address saved in arm_config.yaml. If the connection fails, it will keep
+trying until it succeeds.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="main.Main.get_cloud_host_and_connect">
+<em class="property">async </em><code class="sig-name descname">get_cloud_host_and_connect</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#main.Main.get_cloud_host_and_connect" title="Permalink to this definition">¶</a></dt>
+<dd><p>Retrieves the latest address of the Cloud service from the Control Panel and attempts to connect using the
+new host. If the connection succeeds, saves the new host to the config file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p><strong>connection_success</strong> – 0 or 1, representing if the attempted connection using the new host succeeded. Integer values are used
+instead of bool, because they are directly JSON serializable.</p>
+</dd>
+<dt class="field-even">Return type</dt>
+<dd class="field-even"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="main.Main.heartbeat">
+<em class="property">async </em><code class="sig-name descname">heartbeat</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#main.Main.heartbeat" title="Permalink to this definition">¶</a></dt>
+<dd><p>Heartbeat function, which is executed in a certain interval to check WebSocket connection statuses and set up
+connections as needed. First, it checks if there is an open and responsive connection to the Cloud service. If not, it will
+try to open a connection using the host address saved in arm_config.yaml. If the connection cannot be opened, retrieves the
+Cloud host address from the Control Panel and tries to establish a connection using that. If it succeeds, the new host will
+be saved to arm_config.yaml. Finally, the connection status is sent to the Control Panel. In case there is a healthy connection
+to the Cloud service and the user pressed the start button, a new session will be initiated. If there is no connection, the
+session will not be started even if the start button was pressed.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p><strong>should_start_session</strong> – 0 or 1, representing if the session should be started. Integer values are used instead of bool, because they are directly
+JSON serializable. If there is no connection to the Cloud service, the session cannot be started.</p>
+</dd>
+<dt class="field-even">Return type</dt>
+<dd class="field-even"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="main.Main.load_config">
+<code class="sig-name descname">load_config</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#main.Main.load_config" title="Permalink to this definition">¶</a></dt>
+<dd><p>Loads the contents of the config file (arm_config.yaml)</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-servo_control">
+<span id="servo-control-module"></span><h1>servo_control module<a class="headerlink" href="#module-servo_control" title="Permalink to this headline">¶</a></h1>
+<p>Contains the lower level insturctions that are manipulating the servos directly. These functions are called from
+the high level counterpart, arm_control.</p>
+<dl class="py class">
+<dt id="servo_control.ServoControl">
+<em class="property">class </em><code class="sig-prename descclassname">servo_control.</code><code class="sig-name descname">ServoControl</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">servos</span><span class="o">=</span><span class="default_value">14, 15, 18, 24, 25</span></em>, <em class="sig-param"><span class="n">start_positions</span><span class="o">=</span><span class="default_value">1425, 500, 1800, 1780, 1150</span></em><span class="sig-paren">)</span><a class="headerlink" href="#servo_control.ServoControl" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt id="servo_control.ServoControl.execute_command">
+<code class="sig-name descname">execute_command</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">cmd</span></em><span class="sig-paren">)</span><a class="headerlink" href="#servo_control.ServoControl.execute_command" title="Permalink to this definition">¶</a></dt>
+<dd><p>Executes a single command on a single servo. Since servos move as fast as they can to the given position,
+which results in a too fast and unstable movement, instead of immediatly giving the command to move to the final positions,
+a series of intermediate positions are generated and supplied to the servo in a certain frequency to slow and smooth the movement.
+Except when recording the dataset (where even periods between movements are important) a sine smoothing is applied to further
+slow the movement at the beginning and end of every command. In order the achieve this, first a trajectory is generated as a list
+of intermediate positions, then the trajectory is executed by sendin each position to the servo and pausing for a short time
+between the steps.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>cmd</strong> (<em>tuple</em>) – Tuple containing the command to be executed. cmd[0] is the servo index (not pin number!), which retrieves the pin number from the
+servos parameter of the __init__ function. cmd[1] is the pulse width where the servo should move, and cmd[2] is optionally the
+desired speed of the movement. It has to be one of the keys from self.speeds. If nothing is supplied, defaults to “fast”.
+Used to slow down movement when recording training video.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="servo_control.ServoControl.execute_commands">
+<code class="sig-name descname">execute_commands</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">commands</span></em>, <em class="sig-param"><span class="n">parallel</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#servo_control.ServoControl.execute_commands" title="Permalink to this definition">¶</a></dt>
+<dd><p>Executes the commands supplied.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>commands</strong> (<em>tuple</em>) – Each element in the tuple is one command, which is another tuple, including the polar coordinates the destination. The first element corrensponds
+to the pulse_width which servo0 needs to receive in order to move to the correct position, and the second element corrensponds to the distance
+in pixels from the top of the picture used for inference.</p></li>
+<li><p><strong>parallel</strong> (<em>bool</em>) – If this parameter is true, the commands are executed simultaneously, utilizing multi-threading. This results in faster and smoother movement,
+but not always applicable. For example after picking up an object, the arm need to move further up to avoid accidentally bumping into other objects
+when moving sideways.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="servo_control.ServoControl.init_arm_position">
+<code class="sig-name descname">init_arm_position</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">is_inference</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#servo_control.ServoControl.init_arm_position" title="Permalink to this definition">¶</a></dt>
+<dd><p>Instructs the arm to move to inital position for taking a video for training or for taking pictures for inference.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt id="servo_control.ServoControl.move_to_position">
+<code class="sig-name descname">move_to_position</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">end_pos</span></em>, <em class="sig-param"><span class="n">is_container</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#servo_control.ServoControl.move_to_position" title="Permalink to this definition">¶</a></dt>
+<dd><p>Instructs the arm to move to the supplied destination. On the first run, it fixes servo2 and servo3 to avoid unexpected
+movements. It always start with moving servo2 to position in order to avoid bouncing into objects. The variables servo_2_pos and servo_3_pos
+are functions of servo_1_pos and were determined by recording 7 datapoints of the servo angles for correct position for item pickup, then
+polynomial curves were fitted, which gave the constants used below.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>end_pos</strong> (<em>tuple</em>) – A tuple containing the polar coordinates of the object. The first element corresponds to the pulse_width which servo0 needs to receive in order
+to move to the correct position, and the second element corrensponds to the distance in pixels from the top of the picture used for inference.</p></li>
+<li><p><strong>is_container</strong> (<em>bool</em>) – If it is true, the arm will move to a higher position, which is suitable for dropping off an object.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="servo_control.ServoControl.neutralize_servos">
+<code class="sig-name descname">neutralize_servos</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#servo_control.ServoControl.neutralize_servos" title="Permalink to this definition">¶</a></dt>
+<dd><p>Neutralizes servos, which means that it sends a 0 pulse width to each of them, which will make them release the shafts,
+so they become moveable with hand.</p>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="module-storage">
+<span id="storage-module"></span><h1>storage module<a class="headerlink" href="#module-storage" title="Permalink to this headline">¶</a></h1>
+<p>Handles uploads to AWS s3 and creation of local folder for files to be saved.</p>
+<dl class="py class">
+<dt id="storage.Storage">
+<em class="property">class </em><code class="sig-prename descclassname">storage.</code><code class="sig-name descname">Storage</code><a class="headerlink" href="#storage.Storage" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<dl class="py method">
+<dt id="storage.Storage.create_next_session_folder">
+<code class="sig-name descname">create_next_session_folder</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#storage.Storage.create_next_session_folder" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates a folder for the inference images names sess_{datetime}.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p><strong>curr_sess_path</strong> – Absolute path of the current session folder.</p>
+</dd>
+<dt class="field-even">Return type</dt>
+<dd class="field-even"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="storage.Storage.create_next_train_folder">
+<code class="sig-name descname">create_next_train_folder</code><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#storage.Storage.create_next_train_folder" title="Permalink to this definition">¶</a></dt>
+<dd><p>Creates a folder for the training videos, named as simple integers starting from 1.
+It will find the highest existing number and increment it to get the current folder name.
+If the highest number is an empty folder, that will be used instead of creating a new one.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns</dt>
+<dd class="field-odd"><p><strong>next_folder</strong> – Absolute path of the next folder for training videos.</p>
+</dd>
+<dt class="field-even">Return type</dt>
+<dd class="field-even"><p>str</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt id="storage.Storage.upload_file">
+<code class="sig-name descname">upload_file</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">bucket</span></em>, <em class="sig-param"><span class="n">path</span></em>, <em class="sig-param"><span class="n">arm_id</span><span class="o">=</span><span class="default_value">''</span></em><span class="sig-paren">)</span><a class="headerlink" href="#storage.Storage.upload_file" title="Permalink to this definition">¶</a></dt>
+<dd><p>Uploads a file to s3.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>bucket</strong> (<em>str</em>) – Bucket name on AWS s3.</p></li>
+<li><p><strong>path</strong> (<em>str</em>) – Path of the file to be uploaded.</p></li>
+<li><p><strong>arm_id</strong> (<em>str</em>) – Identifier of the arm.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+</div>
+<div class="section" id="indices-and-tables">
+<h1>Indices and tables<a class="headerlink" href="#indices-and-tables" title="Permalink to this headline">¶</a></h1>
+<ul class="simple">
+<li><p><a class="reference internal" href="genindex.html"><span class="std std-ref">Index</span></a></p></li>
+<li><p><a class="reference internal" href="py-modindex.html"><span class="std std-ref">Module Index</span></a></p></li>
+</ul>
+</div>
+
+
+           </div>
+           
+          </div>
+          <footer>
+  
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>
+        &copy; Copyright 2020, Simon Szalai
+
+    </p>
+  </div>
+  Built with <a href="http://sphinx-doc.org/">Sphinx</a> using a <a href="https://github.com/rtfd/sphinx_rtd_theme">theme</a> provided by <a href="https://readthedocs.org">Read the Docs</a>. 
+
+</footer>
+
+        </div>
+      </div>
+
+    </section>
+
+  </div>
+  
+
+
+  <script type="text/javascript">
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script>
+
+  
+  
+    
+   
+
+</body>
+</html>
