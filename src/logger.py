@@ -1,3 +1,8 @@
+"""
+Python Logger to format logs and send them to the Control Panel using HTTPHandler.
+
+"""
+
 import logging
 import logging.handlers
 from yaml import load, Loader, YAMLError
