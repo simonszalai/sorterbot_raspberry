@@ -1,13 +1,10 @@
-# import ssl
 import json
 import asyncio
 import socket
 import websocket
 import websockets
-# from pathlib import Path
 from time import sleep
 from yaml import load, dump, Loader, YAMLError
-from concurrent.futures import TimeoutError as ConnectionTimeoutError
 
 from arm_commands import ArmCommands
 
@@ -36,10 +33,6 @@ class Main:
         self.control_websocket = None
         self.commands = ArmCommands(self.config_path)
 
-        # self.ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
-        # localhost_pem = Path(__file__).parent.parent.joinpath("cert.pem")
-        # self.ssl_context.load_verify_locations(localhost_pem)
-
     async def heartbeat(self):
         """
         Heartbeat function, which is executed in a certain interval to check WebSocket connection statuses and set up
@@ -63,23 +56,6 @@ class Main:
 
             if not cloud_conn_status:
                 cloud_conn_status = await self.get_cloud_host_and_connect()
-
-            # try:
-            #     # Try to ping Cloud websocket connection
-            #     cloud_websocket.ping()
-            # except ConnectionRefusedError:
-                # Connection is closed, retrieve host from Control Panel and try again
-
-
-            # if self.cloud_websocket and self.cloud_websocket.open:
-            #     # If Cloud connection is open, try to ping it
-            #     cloud_conn_status = await self.ping_cloud()
-            # else:
-            #     # If Cloud connection is closed, open it
-            #     success_connecting = await self.connect_cloud()
-            #     if not success_connecting:
-            #         # If openin connection was not successful, retreive the latest host address from Control Panel and try to connect with that
-            #         cloud_conn_status = await self.get_cloud_host_and_connect()
 
             # Report back to Control Panel if connecting to the Cloud Service was successful and see if a new session should be started
             await self.control_websocket.send(json.dumps({
@@ -144,9 +120,7 @@ class Main:
             cloud_websocket = websocket.create_connection(self.cloud_url, timeout=1)
             cloud_websocket.ping()
             cloud_websocket.close()
-            # self.cloud_websocket = await asyncio.wait_for(websockets.connect(self.cloud_url), 1)
-            # pong_waiter = await self.cloud_websocket.ping()
-            # await pong_waiter
+
             return 1
         except (
                 ConnectionRefusedError,
@@ -159,30 +133,8 @@ class Main:
                 print("Cloud service is offline with latest host as well.")
             else:
                 print("Cloud service is offline.")
+
             return 0
-
-    # async def ping_cloud(self):
-    #     """
-    #     Pings to WebSockets connection to the Cloud service. If the ping fails, closes the connection.
-
-    #     Returns
-    #     -------
-    #     connection_success : int
-    #         0 or 1, representing if pinging the Cloud service succeeded. Integer values are used
-    #         instead of bool, because they are directly JSON serializable.
-
-    #     """
-
-    #     try:
-    #         pong_waiter = await self.cloud_websocket.ping()
-    #         await pong_waiter
-    #         print("SorterBot Cloud is online.")
-    #         return 1
-    #     except (ConnectionRefusedError, websockets.exceptions.ConnectionClosedError, websockets.exceptions.InvalidMessage):
-    #         print("WebSocket connection to SorterBot Cloud exists, but it is unresponsive, closing connection.")
-    #         await self.cloud_websocket.close()
-    #         self.cloud_websocket = None
-    #         return 0
 
     async def get_cloud_host_and_connect(self):
         """
@@ -242,7 +194,6 @@ if __name__ == "__main__":
 
             print("Checking in...")
             should_start_session = main.loop.run_until_complete(main.heartbeat())
-            print(f"session should start: {should_start_session}")
             # should_start_session = True
             if should_start_session:
                 main.commands.infer_and_sort()

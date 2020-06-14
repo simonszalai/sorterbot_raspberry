@@ -7,12 +7,10 @@ the servo motors, they are doing higher level operations which consists of serie
 
 import os
 import json
-import asyncio
 import requests
 import websocket
 import concurrent.futures
 from datetime import datetime
-from urllib.parse import urljoin
 from pathlib import Path
 from yaml import load, Loader, YAMLError
 from time import sleep, time
@@ -82,22 +80,6 @@ class ArmCommands:
         and returns the arm to the initial position.
 
         """
-
-        # def on_error(ws, error):
-        #     print(error)
-
-        # def on_close():
-        #     print("WS close")
-
-        # def on_open():
-        #     print("WS open")
-
-        # Initiate WebSockets connection to Cloud service
-        # cloud_websocket = websocket.create_connection(self.ws_cloud_url, on_error=on_error, on_close=on_close, on_open=on_open)
-
-        # cloud_websocket = websocket.WebSocketApp(self.ws_cloud_url, on_error=on_error, on_close=on_close, on_open=on_open)
-        # ws.on_open = on_open
-        # cloud_websocket.run_forever()
 
         # Construct session path
         self.curr_sess_path = self.storage.create_next_session_folder()
@@ -224,20 +206,12 @@ class ArmCommands:
                 futures.append(future)
 
         results = []
-        # for task in asyncio.as_completed(tasks):
-        #     success, step = await task
-        #     results.append({
-        #         "image_id": step,
-        #         "success": success
-        #     })
         for future in concurrent.futures.as_completed(futures):
             success, step = future.result()
             results.append({
                 "image_id": step,
                 "success": success
             })
-
-        # cloud_websocket.close()
 
         self.logger.info("All images successfully processed.", {"arm_id": self.arm_id, "session_id": self.session_id, "log_type": "comm_gen"})
 
@@ -340,6 +314,8 @@ class ArmCommands:
         self.sc.neutralize_servos()
 
 
+# Manual commands to use separate functionalities. Might be useful later.
+
 # commands = ArmCommands()
 
 # while True:
@@ -385,7 +361,7 @@ class ArmCommands:
 #                 "locations_as_pixels": ((820, 0,), (820, 1232,),)
 #             })
 #         elif cmd == 11:
-#             commands.filter_duplicate_positions([(1455.8194454670409, 1640.2550963180688), (1305.3293199180484, 1232.5792585756476), (1020.130933314334, 1844.6160327887617), (1339.5320714079303, 1855.2308768926205), (1561.6438853079546, 1307.4115533251302), (1740.7008299435813, 1523.2044400191508), (1619.2404831864485, 1339.1886733551323), (1700.0540257146777, 1507.7658838736122), (1467.7368179032735, 1647.7691177720542), (1314.814153218803, 1234.5349345090485), (1350.7423864318368, 1864.9636021690299), (1575.215952456132, 1304.2532593094427), (1656.1526068281983, 1727.5550014215837), (1015.4801892454399, 1822.9144826194706), (1292.6923350135394, 1247.4895924617376), (1300.9698980485962, 1456.495902509347), (1724.5350831335736, 1514.0857223938847), (1684.8220078074987, 1749.2826567152358), (1597.6762654563888, 1318.4475549061426), (1709.7546353079906, 1511.1570045990097), (1487.1105754946368, 1654.7772611680075), (1672.505961718362, 1737.8291536149027), (1366.4454348457552, 1883.4748152407078), (1589.4983507666955, 1312.7055035675012), (1326.3400103385557, 1249.2387899050423)])
+#             commands.filter_duplicate_positions([(1455.8194454670409, 1640.2550963180688), (1305.3293199180484, 1232.5792585756476), (1020.130933314334, 1844.6160327887617), (1339.5320714079303, 1855.2308768926205), (1561.6438853079546, 1307.4115533251302), (1740.7008299435813, 1523.2044400191508), (1619.2404831864485, 1339.1886733551323), (1700.0540257146777, 1507.7658838736122), (1467.7368179032735, 1647.7691177720542), (1314.814153218803, 1234.5349345090485), (1350.7423864318368, 1864.9636021690299), (1575.215952456132, 1304.2532593094427), (1656.1526068281983, 1727.5550014215837), (1015.4801892454399, 1822.9144826194706), (1292.6923350135394, 1247.4895924617376), (1300.9698980485962, 1456.495902509347), (1724.5350831335736, 1514.0857223938847), (1684.8220078074987, 1749.2826567152358), (1597.6762654563888, 1318.4475549061426), (1709.7546353079906, 1511.1570045990097), (1487.1105754946368, 1654.7772611680075), (1672.505961718362, 1737.8291536149027), (1366.4454348457552, 1883.4748152407078), (1589.4983507666955, 1312.7055035675012), (1326.3400103385557, 1249.2387899050423)]) # noqa: E501
 #     except Exception as e:
 #         commands.close()
 #         raise e
