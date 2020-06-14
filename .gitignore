@@ -6,3 +6,4 @@ arm_config_dev.yaml
 *.h264
 *.pyc
 cert.pem
+**/.DS_Store
