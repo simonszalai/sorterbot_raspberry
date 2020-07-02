@@ -140,7 +140,7 @@ class ServoControl:
         a series of intermediate positions are generated and supplied to the servo in a certain frequency to slow and smooth the movement.
         Except when recording the dataset (where even periods between movements are important) a sine smoothing is applied to further
         slow the movement at the beginning and end of every command. In order the achieve this, first a trajectory is generated as a list
-        of intermediate positions, then the trajectory is executed by sendin each position to the servo and pausing for a short time
+        of intermediate positions, then the trajectory is executed by sending each position to the servo and pausing for a short time
         between the steps.
 
         Parameters
